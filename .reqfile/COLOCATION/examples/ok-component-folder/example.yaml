@@ -1,0 +1,3 @@
+expected: ok
+rationale: "Avatar owns its stylesheet, test and fixture in its folder."
+origin: authored

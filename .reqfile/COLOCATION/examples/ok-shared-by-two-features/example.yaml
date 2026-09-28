@@ -1,0 +1,3 @@
+expected: ok
+rationale: "money.ts is used by billing and cart, and sits in their lowest common folder."
+origin: authored

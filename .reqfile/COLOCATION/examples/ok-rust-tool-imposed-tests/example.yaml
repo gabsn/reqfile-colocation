@@ -1,0 +1,3 @@
+expected: ok
+rationale: "Unit tests are inside the module; integration tests are in the tests/ folder cargo requires."
+origin: authored

@@ -1,0 +1,3 @@
+expected: ok
+rationale: "Each feature owns its model, logic and test in its own folder."
+origin: authored

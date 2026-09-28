@@ -1,0 +1,3 @@
+expected: ok
+rationale: "Each constant lives in the module that uses it; config.rs, used by several modules, is at the crate root."
+origin: authored

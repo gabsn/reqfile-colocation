@@ -33,4 +33,10 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
       - run: bun install --frozen-lockfile
-      - run: npm publish --provenance --access public
+      # A tag can release the requirement and its examples without a new checker.
+      - run: |
+          if npm view "$(node -p 'require("./package.json").name')@$(node -p 'require("./package.json").version')" version >/dev/null 2>&1; then
+            echo "This checker version is already on npm."
+          else
+            npm publish --provenance --access public
+          fi

@@ -1,0 +1,5 @@
+expected: violation
+findings:
+  - crm/models/invoice.py
+rationale: "Invoices and customers are each split across models/, repositories/ and services/."
+origin: authored

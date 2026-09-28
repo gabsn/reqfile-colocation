@@ -1,0 +1,6 @@
+expected: violation
+findings:
+  - src/styles/avatar.css
+  - fixtures/users.ts
+rationale: "Avatar's stylesheet is in src/styles/ and its fixture in fixtures/, both used by Avatar only."
+origin: authored

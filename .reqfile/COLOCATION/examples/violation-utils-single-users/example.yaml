@@ -1,0 +1,6 @@
+expected: violation
+findings:
+  - src/utils/clampQuantity.ts
+  - src/utils/formatInvoiceNumber.ts
+rationale: "src/utils/ holds two helpers, each imported by one feature only (billing, cart)."
+origin: authored

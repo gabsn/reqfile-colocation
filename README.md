@@ -9,18 +9,25 @@ same layout as a requirement inside any project.
 
 ```
 Reqfile.yaml                      # the requirement, same format as a local one
-.reqfile/COLOCATION/examples/     # labeled benchmark: violation-… and ok-… repositories
-.reqfile/COLOCATION/README.md     # why each case has its label
+.reqfile/COLOCATION/examples/     # labeled benchmark: example.yaml (label, expected findings, rationale) + files/
 src/                              # the checker, in TypeScript, published to npm
 ```
 
 ## Use it
 
-In your Reqfile (reqfile 0.2 or later), with [Bun](https://bun.sh) installed:
+Try it, then adopt it (reqfile 0.3 or later, with [Bun](https://bun.sh) installed):
+
+```sh
+reqfile eval --use gabsn/reqfile-colocation@v0.1.2    # its score on its examples
+reqfile check --use gabsn/reqfile-colocation@v0.1.2   # its findings on your code
+reqfile add gabsn/reqfile-colocation@v0.1.2           # writes the line below
+```
+
+which writes:
 
 ```yaml
 code:
-  - { id: COLOCATION, use: gabsn/reqfile-colocation@v0.1.1 }
+  - { id: COLOCATION, use: gabsn/reqfile-colocation@<commit> }  # v0.1.2
 ```
 
 The check runs `bunx @g48in/reqfile-colocation@0.1.1`: Bun fetches the checker from
@@ -44,6 +51,9 @@ It resolves imports of TS/JS, Python and Rust into a file graph, then flags:
 | one feature split across sibling layer folders (models/, services/…) | 0.85 |
 | a file whose items serve disjoint sets of users | 0.75 |
 
+A probability above 0.7 is a violation (`thresholds` in Reqfile.yaml); files
+judged fine are reported as `pass` results with 0.1.
+
 Imports are read with regular expressions, not parsers: fast (about 60 ms on
 a mid-size repository), but approximate. The checker is plain TypeScript with
 no dependencies, bundled to one Node-compatible file on publish.
@@ -52,10 +62,10 @@ no dependencies, bundled to one Node-compatible file on publish.
 
 ```sh
 bun install && bun test          # unit tests
-reqfile test                     # the labeled benchmark
+reqfile eval                     # the labeled benchmark
 ```
 
-`reqfile test` runs the version named in Reqfile.yaml, the published one. To
+`reqfile eval` runs the version named in Reqfile.yaml, the published one. To
 measure the working copy before a release, `bun run build` and temporarily set
 the check to `run: node dist/main.js`. reqfile has no way yet to point a
 package's own checks at its working copy; the spike surfaced this.
