@@ -65,6 +65,11 @@ bun install && bun test          # unit tests
 reqfile eval                     # the labeled benchmark
 ```
 
+Examples are chosen because a person judges them hard, near misses on both
+sides of the rule included, not because the checker fails them, and each
+rationale says why. A benchmark every version passes cannot show that a change
+helps, so some cases stay missed until the checker improves.
+
 `reqfile eval` runs the version named in Reqfile.yaml, the published one. To
 measure the working copy before a release, `bun run build` and temporarily set
 the check to `run: node dist/main.js`. reqfile has no way yet to point a
