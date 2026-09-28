@@ -51,14 +51,10 @@ mid-size repository), but approximate.
 
 ## Measure it
 
-`reqfile test` runs the version named in Reqfile.yaml. To measure the working
-copy instead, before a release:
-
-```sh
-cargo install --path . && sed 's/uvx reqfile-colocation==[0-9.]*/reqfile-colocation/' Reqfile.yaml > /tmp/Reqfile.yaml
-```
-
-(an awkward step the spike surfaced; see below).
+`reqfile test` runs the version named in Reqfile.yaml, the published one. To
+measure the working copy before a release, `cargo install --path .` and
+temporarily set the check to `run: reqfile-colocation`. reqfile has no way yet
+to point a package's own checks at its working copy; the spike surfaced this.
 
 ## Release
 
