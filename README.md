@@ -16,12 +16,18 @@ src/                              # the checker, binary reqfile-colocation
 
 ## Use it
 
-```sh
-cargo install --git https://github.com/gabsn/reqfile-colocation
+In your Reqfile (reqfile 0.2 or later), with [uv](https://docs.astral.sh/uv/)
+installed:
+
+```yaml
+code:
+  - { id: COLOCATION, use: gabsn/reqfile-colocation@v0.1.1 }
 ```
 
-Then copy the COLOCATION entry of [Reqfile.yaml](Reqfile.yaml) into your
-Reqfile. A `use:` import is the next step of the spike.
+The check runs `uvx reqfile-colocation==0.1.1`: uv fetches the checker from
+PyPI once and caches it, nothing to install. Without uv, replace the check in
+your use block with `cargo install reqfile-colocation` and
+`run: reqfile-colocation`.
 
 ## The checker
 
@@ -45,9 +51,20 @@ mid-size repository), but approximate.
 
 ## Measure it
 
+`reqfile test` runs the version named in Reqfile.yaml. To measure the working
+copy instead, before a release:
+
 ```sh
-cargo install --path . && reqfile test
+cargo install --path . && sed 's/uvx reqfile-colocation==[0-9.]*/reqfile-colocation/' Reqfile.yaml > /tmp/Reqfile.yaml
 ```
+
+(an awkward step the spike surfaced; see below).
+
+## Release
+
+Bump `version` in Cargo.toml and in the `run:` of Reqfile.yaml, then push a
+tag `vX.Y.Z`. The release workflow builds wheels for Linux, macOS and Windows
+and publishes them to PyPI through trusted publishing, without a stored token.
 
 11 examples, 11 as labeled. The benchmark is small and was written together
 with the checker, so this is a sanity check, not evidence of accuracy on

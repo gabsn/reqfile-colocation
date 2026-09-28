@@ -1,0 +1,18 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "reqfile-colocation"
+description = "reqfile checker for COLOCATION: code lives in the lowest folder that contains everything using it"
+readme = "README.md"
+license = { text = "MIT OR Apache-2.0" }
+requires-python = ">=3.8"
+keywords = ["reqfile-requirement", "reqfile", "colocation", "lint"]
+dynamic = ["version"]
+
+[project.urls]
+Repository = "https://github.com/gabsn/reqfile-colocation"
+
+[tool.maturin]
+bindings = "bin"

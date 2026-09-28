@@ -1,6 +1,6 @@
 [package]
 name = "reqfile-colocation"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "reqfile checker for COLOCATION: code lives in the lowest folder that contains everything using it"
 license = "MIT OR Apache-2.0"
