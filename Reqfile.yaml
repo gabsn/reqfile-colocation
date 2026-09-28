@@ -9,6 +9,6 @@ code:
     who: Anyone adding a file; agents deciding where new code goes.
     checks:
       - command:
-          run: bunx reqfile-colocation@0.1.1   # fetched from npm and cached by bun; reads the whole repository, prints SARIF with a probability per file
+          run: bunx @g48in/reqfile-colocation@0.1.1   # fetched from npm and cached by bun; reads the whole repository, prints SARIF with a probability per file
           format: sarif
           fix_hint: Move the file to the lowest folder that contains all of its users, or split a shared file by the features its items serve.

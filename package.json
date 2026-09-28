@@ -1,5 +1,5 @@
 {
-  "name": "reqfile-colocation",
+  "name": "@g48in/reqfile-colocation",
   "version": "0.1.1",
   "description": "reqfile checker for COLOCATION: code lives in the lowest folder that contains everything using it",
   "keywords": ["reqfile-requirement", "reqfile", "colocation", "lint"],

@@ -23,9 +23,9 @@ code:
   - { id: COLOCATION, use: gabsn/reqfile-colocation@v0.1.1 }
 ```
 
-The check runs `bunx reqfile-colocation@0.1.1`: Bun fetches the checker from
+The check runs `bunx @g48in/reqfile-colocation@0.1.1`: Bun fetches the checker from
 npm once and caches it, nothing to install. With Node only, replace the check
-in your use block with `run: npx -y reqfile-colocation@0.1.1`.
+in your use block with `run: npx -y @g48in/reqfile-colocation@0.1.1`.
 
 ## The checker
 
