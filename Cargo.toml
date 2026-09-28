@@ -1,0 +1,12 @@
+[package]
+name = "reqfile-colocation"
+version = "0.1.0"
+edition = "2021"
+description = "reqfile checker for COLOCATION: code lives in the lowest folder that contains everything using it"
+license = "MIT OR Apache-2.0"
+keywords = ["reqfile-requirement", "reqfile", "colocation", "architecture", "lint"]
+
+[dependencies]
+ignore = "0.4"
+regex = "1"
+serde_json = "1"

@@ -1,0 +1,14 @@
+# COLOCATION, a shareable requirement checked by reqfile (https://reqfile.dev)
+reqfile: 1
+
+code:
+  - id: COLOCATION
+    ref: Parnas, "On the Criteria To Be Used in Decomposing Systems into Modules"; Martin, Common Closure Principle; Gabriel, Patterns of Software (locality)
+    must: Code lives in the lowest folder that contains everything using it, tests included. Each module, type, function, constant, style, fixture or test used by one feature lives in that feature's folder, next to the code it serves; it moves up to a shared folder only once several features use it, so a shared file whose items each serve one feature is a violation. Folders group code by feature, not by technical layer. Locations a tool requires (Rust tests/, migrations, framework route folders) are allowed; a convention alone, such as a test/ tree mirroring src/, is not.
+    why: What changes together lives together, so a change touches one folder, a reader or agent finds all of a feature in one place, and deleting a feature leaves no orphans behind.
+    who: Anyone adding a file; agents deciding where new code goes.
+    checks:
+      - command:
+          run: reqfile-colocation   # reads the whole repository, prints SARIF with a probability per file
+          format: sarif
+          fix_hint: Move the file to the lowest folder that contains all of its users, or split a shared file by the features its items serve.
