@@ -43,7 +43,7 @@ export function judge(
     judged.add(test);
     const home = paths.commonFolder(subjects.map(paths.dir));
     if (!paths.within(paths.dir(test), home)) {
-      add(test, TEST_AWAY, `${test} tests ${subjects.join(", ")} but lives outside ${orRoot(home)}/`);
+      add(test, TEST_AWAY, `tests ${subjects.join(", ")} from outside ${orRoot(home)}/`);
     }
   }
 
@@ -59,10 +59,10 @@ export function judge(
     judged.add(target);
     const home = paths.commonFolder(placing.map(paths.dir));
     if (!paths.within(paths.dir(target), home)) {
-      add(target, MISPLACED, `${target} is used only from ${orRoot(home)}/ (${placing.join(", ")}) but lives outside it`);
+      add(target, MISPLACED, `used only from ${orRoot(home)}/ (${placing.map((u) => relativeTo(home, u)).join(", ")})`);
     }
     const clusters = grabBag(targetEdges, sources.get(target) ?? "");
-    if (clusters) add(target, GRAB_BAG, `${target} holds items that serve separate users: ${clusters}`);
+    if (clusters) add(target, GRAB_BAG, `holds items that serve separate users: ${clusters}`);
   }
 
   for (const [path, message] of layered(files)) {
@@ -79,6 +79,11 @@ export function judge(
       message: found.map(([, m]) => m).join("; "),
     };
   });
+}
+
+/** `path` relative to `folder` when inside it, as people read it in a message. */
+function relativeTo(folder: string, path: string): string {
+  return folder !== "" && path.startsWith(`${folder}/`) ? path.slice(folder.length + 1) : path;
 }
 
 function orRoot(folder: string): string {

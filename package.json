@@ -1,6 +1,6 @@
 {
   "name": "@g48in/reqfile-colocation",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "description": "reqfile checker for COLOCATION: code lives in the lowest folder that contains everything using it",
   "keywords": ["reqfile-requirement", "reqfile", "colocation", "lint"],
   "license": "MIT OR Apache-2.0",
