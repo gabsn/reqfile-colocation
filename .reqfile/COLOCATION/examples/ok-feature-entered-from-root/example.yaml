@@ -1,0 +1,3 @@
+expected: ok
+rationale: "Hard: billing/ and cart/ are each used only by main.ts at the root. The rule keeps code within the folder of its users, not beside them, so a feature folder under its entry point is fine; read literally, 'the lowest folder' could suggest moving them up."
+origin: authored

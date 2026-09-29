@@ -1,0 +1,3 @@
+expected: ok
+rationale: "Hard: a separate tests folder, the shape the rule forbids for a test/ tree mirroring src/, but this one sits inside billing/, so the tests stay within the folder of the code they test."
+origin: authored

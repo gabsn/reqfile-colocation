@@ -1,0 +1,3 @@
+expected: ok
+rationale: "Hard: types.ts holds items with disjoint users, the shape of a grab bag, but every user is in checkout/, so each item already lives in the folder of its only feature."
+origin: authored

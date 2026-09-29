@@ -1,0 +1,5 @@
+expected: violation
+findings:
+  - tests/invoices/test_issue.py
+rationale: "Hard: pyproject.toml points pytest at tests/, so the layout looks required by a tool. It is not: pytest collects test_*.py anywhere, and testpaths is the project's choice, a convention the rule does not exempt."
+origin: authored
