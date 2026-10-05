@@ -6,6 +6,7 @@ test("script: named, default and side-effect imports", () => {
     'import Money, { formatCents, type Cents as C } from "../money";\nimport "./Avatar.css";\nimport { x } from "react";\n';
   expect(script(text)).toEqual([
     { module: "../money", items: ["formatCents", "Cents", "default"] },
+    { module: "react", items: ["x"] },
     { module: "./Avatar.css", items: [] },
   ]);
 });

@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 
 import pkg from "../package.json";
 import * as paths from "./paths";
-import { edges, type Project } from "./resolve";
+import { type Alias, edges, type Project } from "./resolve";
 import { judge } from "./rules";
 import { failed, report } from "./sarif";
 import * as source from "./source";
@@ -37,7 +37,28 @@ function load(): Project {
     pythonRoots.add(paths.dir(manifest));
     pythonRoots.add(paths.join(paths.dir(manifest), "src"));
   }
-  return { files, sources, crates, pythonRoots: [...pythonRoots] };
+  const aliases = new Map<string, Alias[]>();
+  for (const config of [...files].filter((p) => ["tsconfig.json", "jsconfig.json"].includes(paths.name(p)))) {
+    try {
+      aliases.set(paths.dir(config), tsAliases(paths.dir(config), read(config)));
+    } catch (error) {
+      throw new Error(`${config}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  return { files, sources, crates, pythonRoots: [...pythonRoots], aliases };
+}
+
+/** The `compilerOptions.paths` of a tsconfig, as repository paths. JSON with
+ * comments and trailing commas, as TypeScript accepts it. */
+function tsAliases(dir: string, text: string): Alias[] {
+  const json = text.replace(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (_, s) => s ?? "").replace(/,(\s*[}\]])/g, "$1");
+  const options = (JSON.parse(json) as { compilerOptions?: { baseUrl?: string; paths?: Record<string, string[]> } }).compilerOptions ?? {};
+  const base = paths.join(dir, options.baseUrl ?? ".");
+  return Object.entries(options.paths ?? {}).map(([pattern, targets]) => ({
+    prefix: pattern.replace(/\*$/, ""),
+    exact: !pattern.endsWith("*"),
+    targets: targets.map((t) => paths.join(base, t)),
+  }));
 }
 
 function main(): number {

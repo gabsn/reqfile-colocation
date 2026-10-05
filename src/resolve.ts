@@ -18,7 +18,12 @@ export type Project = {
   crates: Map<string, string>;
   /** Folders Python absolute imports start from. */
   pythonRoots: string[];
+  /** Path aliases of each tsconfig.json or jsconfig.json, by its folder. */
+  aliases: Map<string, Alias[]>;
 };
+
+/** `@/*` -> `src/*`: a specifier prefix and the repository paths it stands for. */
+export type Alias = { prefix: string; exact: boolean; targets: string[] };
 
 export function edges(project: Project): Edge[] {
   const modules = rustModules(project);
@@ -52,11 +57,32 @@ const SCRIPT_CANDIDATES = ["", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".css", "/i
 
 function script(project: Project, from: string, found: Import[]): Edge[] {
   return found.flatMap((imp) => {
-    const base = paths.normalize(paths.join(paths.dir(from), imp.module));
-    if (base === null) return [];
-    const to = SCRIPT_CANDIDATES.map((suffix) => base + suffix).find((c) => project.files.has(c));
-    return to ? [{ from, to, items: imp.items }] : [];
+    const bases = imp.module.startsWith(".")
+      ? [paths.normalize(paths.join(paths.dir(from), imp.module))]
+      : aliased(project, from, imp.module);
+    for (const base of bases) {
+      if (base === null) continue;
+      const to = SCRIPT_CANDIDATES.map((suffix) => base + suffix).find((c) => project.files.has(c));
+      if (to) return [{ from, to, items: imp.items }];
+    }
+    return [];
   });
+}
+
+/** The repository paths a non-relative specifier stands for, through the
+ * aliases of the nearest tsconfig.json above the importing file. */
+function aliased(project: Project, from: string, specifier: string): (string | null)[] {
+  for (let dir = paths.dir(from); ; dir = paths.dir(dir)) {
+    const aliases = project.aliases.get(dir);
+    if (aliases) {
+      return aliases.flatMap((alias) => {
+        if (alias.exact ? specifier !== alias.prefix : !specifier.startsWith(alias.prefix)) return [];
+        const rest = alias.exact ? "" : specifier.slice(alias.prefix.length);
+        return alias.targets.map((target) => paths.normalize(target.replace("*", rest)));
+      });
+    }
+    if (dir === "") return [];
+  }
 }
 
 function python(project: Project, from: string, found: Import[]): Edge[] {

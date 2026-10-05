@@ -3,4 +3,3 @@ findings:
   - src/utils/formatInvoiceNumber.ts
 rationale: "Hard: the same single-user helper as violation-utils-single-users, imported through the @/ path alias most TypeScript projects configure, so the import does not name the file's folder."
 origin: authored
-known: miss

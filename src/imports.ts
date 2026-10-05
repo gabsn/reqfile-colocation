@@ -7,12 +7,14 @@ export type Import = { module: string; items: string[] };
 const SCRIPT_FROM = /^[ \t]*(?:import|export)[ \t]+([^;=()'"]*?)[ \t\n]*from[ \t]*['"]([^'"\n]+)['"]/gm;
 const SCRIPT_BARE = /^[ \t]*import[ \t]*['"]([^'"\n]+)['"]|(?:require|import)\(\s*['"]([^'"\n]+)['"]\s*\)/gm;
 
-/** Relative imports of a TS or JS file; `module` is the specifier. */
+/** Imports of a TS or JS file; `module` is the specifier. Packages are kept:
+ * resolution drops what is not a file of the repository, and resolves path
+ * aliases such as `@/utils/x`. */
 export function script(text: string): Import[] {
   const imports: Import[] = [];
   for (const m of text.matchAll(SCRIPT_FROM)) imports.push({ module: m[2], items: scriptItems(m[1]) });
   for (const m of text.matchAll(SCRIPT_BARE)) imports.push({ module: m[1] ?? m[2], items: [] });
-  return imports.filter((i) => i.module.startsWith("."));
+  return imports;
 }
 
 function scriptItems(clause: string): string[] {
