@@ -43,11 +43,23 @@ tuning the checker to one reading.
 | A package and a folder named alike (`platform/agent-evals`, `voxrouter/agent-evals`) | Conforming when the package is shared, i.e. code of another feature uses it (CI and root configuration are consumers); a tool can be declared `shared` in colocation.yaml | none |
 | Generated code's `index.ts` | Not an interface: generated layout is the tool's | `ok-generated-code-reaches-in` stays ok |
 | `atlas/public/` + `atlas/private/` across two features | Violation: visibility layering is free only inside one feature | stays a violation |
-| A domain one feature re-exports for another (`business_days`) | Violation: what serves several features lives at their common level | stays a violation |
+| A domain one feature re-exports for another (`business_days`) | Narrowed after review: extracting it is right when it is a common utility (business days), not because another feature uses the owner's API: `reports` may depend on `billing`'s business API without that logic moving to a common folder. A re-export alone does not decide it; no check enforces it | `violation-py-business-days-inside-invoicing-used-by-payroll` stays a violation (a utility); no rule may infer it from the re-export |
 | Several files of one feature loose among others (pins) | Violation (earlier decision); checkable under declared `roots` | unchanged |
 
 When a detail is still open, the rule that applies is the one that keeps the
 requirement simplest and most coherent for an agent applying it.
+
+## Regression examples from the principal engineer's review
+
+`ok-two-domains-with-their-own-api-layer`, `ok-package-wide-test-at-package-root`
+and its twin `violation-one-feature-test-at-package-root`,
+`ok-python-package-module-imports-stdlib-name-it-shadows`,
+`ok-rust-path-attribute-in-inline-module`: labels confirmed blind (5 of 5).
+Nuances the reviewer raised: in the api case, billing has no interface at its
+root, so whether `api/` is billing's interface or an inner layer is not
+settled by the wording (confidence 0.55); the Python case is labeled for
+`python3 -m pkg.worker`, which the package layout implies (run as a script,
+`pkg/logging.py` would shadow the standard library).
 
 ## Disagreements of the checker with real code, decided by reviewers
 

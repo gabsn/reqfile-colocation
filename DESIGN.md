@@ -1,8 +1,8 @@
 # COLOCATION as a blocking check: design
 
 Goal: a check CI can block on, whose success means every required rule ran on
-every file and found nothing, and whose findings are true by construction
-rather than by a probability. The principle: each feature owns what belongs to
+every file and found nothing, and whose findings are facts about resolved code
+under a few explicit conventions rather than probabilities. The principle: each feature owns what belongs to
 it, exposes an interface, and can be deleted without leaving its
 implementation scattered; inside a feature, any split (pure/I-O,
 public/private, models/services) is free.
@@ -201,7 +201,13 @@ What independent review of real findings changed in the proposal:
   system) is not that surface's. Without declared features the graph shows
   who uses what, not who owns it. `roots` in colocation.yaml is the
   verifiable form; `suggest` keeps the heuristic.
-- **split is new and blocking.** The layer splits the reviewers found missed
+- **split was blocking, then advisory.** A principal engineer's review
+  reproduced a false block: orders/api calling billing/api (two domains, each
+  with its own api layer) read as one feature `api` split in two, and adding
+  unrelated catalog/api and shipping/api made the finding vanish. A name and
+  a dependency do not prove a feature's identity, so split moved to
+  `suggest`; it can block only on declared features or tiers. Earlier note:
+  **split was new and blocking.** The layer splits the reviewers found missed
   (app/<feature> and infra/<feature>, routes/components/lib for one feature,
   oss/widget beside widget/evals) share a signature that does not depend on a
   name alone: the same feature name in two sibling tier folders and a real
@@ -218,3 +224,15 @@ What independent review of real findings changed in the proposal:
 
 Measures, limits and the adoption criteria with their status are in the
 README; label decisions in LABELS.md.
+
+### Review of 548036a (principal engineer)
+
+Four false blocks, each now a regression test and a development example
+(labels checked blind): split on homonymous layers (now advisory); a test of
+the whole package refused at its root (package-wide tests: entry points, or
+subjects in several features of the root or src/); a module of a Python
+package searching its own folder for absolute imports (only scripts outside
+packages do); `#[path]` inside an inline Rust module (resolved from the inline
+module's folder). Wording: the re-export decision is narrowed (LABELS.md);
+the 8-line workflow threshold and the interface conventions are conventions,
+not proofs.

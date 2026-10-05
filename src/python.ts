@@ -191,9 +191,11 @@ function resolveImport(
     }
     bases = [base];
   } else {
-    // The importing script's folder first, as Python puts it on sys.path.
+    // A script run directly has its own folder first on sys.path; a module
+    // of a package (its folder holds __init__.py) does not.
     const first = segments[0];
-    bases = [paths.dir(importer), ...roots].filter((b, i, all) => all.indexOf(b) === i && moduleAt(repo, b, [first]) !== null);
+    const script = !repo.files.has(paths.join(paths.dir(importer), "__init__.py"));
+    bases = [...(script ? [paths.dir(importer)] : []), ...roots].filter((b, i, all) => all.indexOf(b) === i && moduleAt(repo, b, [first]) !== null);
     if (bases.length === 0) return "external";
   }
   // The first base where the whole module path exists, as Python's search

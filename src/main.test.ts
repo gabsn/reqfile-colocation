@@ -122,20 +122,19 @@ test("Rust: paths inside macro arguments count as uses", () => {
   expect(r.sarif).toContain("only billing.rs uses tax.rs");
 });
 
-test("a product split by visibility, oss/widget/ used from widget/evals/, breaks the split rule", () => {
+test("suggest: a product split by visibility, oss/widget/ used from widget/evals/, reads as a split", () => {
   const r = run({
     "oss/widget/Cargo.toml": '[package]\nname = "widget"\nversion = "0.1.0"\nedition = "2021"\n',
     "oss/widget/src/lib.rs": "pub fn score() -> u32 {\n    1\n}\n",
     "widget/evals/run.py": 'import subprocess\n\nsubprocess.run(["cargo", "test", "--manifest-path", "oss/widget/Cargo.toml"], check=True)\n',
-  });
-  expect(r.code).toBe(1);
-  expect(r.stderr).toContain("oss/widget/Cargo.toml  [split] feature `widget` is split between widget/ and oss/widget/");
+  }, "suggest");
+  expect(r.sarif).toContain("feature `widget` is split between widget/ and oss/widget/");
   const together = run({
     "widget/oss/Cargo.toml": '[package]\nname = "widget"\nversion = "0.1.0"\nedition = "2021"\n',
     "widget/oss/src/lib.rs": "pub fn score() -> u32 {\n    1\n}\n",
     "widget/evals/run.py": 'import subprocess\n\nsubprocess.run(["cargo", "test", "--manifest-path", "widget/oss/Cargo.toml"], check=True)\n',
-  });
-  expect(together.code).toBe(0);
+  }, "suggest");
+  expect(together.sarif).not.toContain("is split between");
 });
 
 test("a workflow step running a feature's logic inline breaks the entry rule; a call into its folder does not", () => {
@@ -170,18 +169,17 @@ test("colocation.yaml is strict: an unknown key fails the run", () => {
   expect(r.stderr).toContain("unknown key `root`");
 });
 
-test("one feature in two tier folders, app/challenge and infra/challenge, breaks the split rule; distinct features do not", () => {
+test("suggest: one feature in two tier folders, app/challenge and infra/challenge, reads as a split; distinct features do not", () => {
   const files = {
     "package.json": "{}",
     "src/app/challenge/score.ts": "export const score = (n: number) => n * 2;\n",
     "src/infra/challenge/handler.ts": 'import { score } from "../../app/challenge/score";\nexport const handle = () => score(1);\n',
     "src/main.ts": 'import { handle } from "./infra/challenge/handler";\nconsole.log(handle());\n',
   };
-  const r = run(files);
-  expect(r.code).toBe(1);
-  expect(r.stderr).toContain("[split] feature `challenge` is split between src/infra/challenge/ and src/app/challenge/");
+  const r = run(files, "suggest");
+  expect(r.sarif).toContain("feature `challenge` is split between src/infra/challenge/ and src/app/challenge/");
   const apart = { ...files, "src/infra/challenge/handler.ts": undefined, "src/infra/gateway/handler.ts": 'import { score } from "../../app/challenge/score";\nexport const handle = () => score(1);\n', "src/main.ts": 'import { handle } from "./infra/gateway/handler";\nconsole.log(handle());\n' };
-  expect(run(Object.fromEntries(Object.entries(apart).filter(([, v]) => v !== undefined)) as Record<string, string>).code).toBe(0);
+  expect(run(Object.fromEntries(Object.entries(apart).filter(([, v]) => v !== undefined)) as Record<string, string>, "suggest").sarif).not.toContain("is split between");
 });
 
 test("interface: a package's own files reach their siblings past its root index; a test outside a module may not", () => {
@@ -224,6 +222,61 @@ test("a tool declared shared in colocation.yaml is not half of a feature named l
     "platform/agent-evals/src/index.ts": "export const runEvals = () => 1;\n",
     "voxrouter/agent-evals/e2e.ts": 'import { runEvals } from "@platform/agent-evals";\nconsole.log(runEvals());\n',
   };
-  expect(run(files).stderr).toContain("[split]");
-  expect(run({ ...files, "colocation.yaml": "shared: [platform/agent-evals]\n" }).code).toBe(0);
+  expect(run(files, "suggest").sarif).toContain("is split between");
+  expect(run({ ...files, "colocation.yaml": "shared: [platform/agent-evals]\n" }, "suggest").sarif).not.toContain("is split between");
+});
+
+// Regressions from the principal engineer's review of 548036a.
+
+test("two domains each with an api/ layer, one calling the other's interface, is not a blocking split", () => {
+  const files = {
+    "package.json": "{}",
+    "src/billing/api/index.ts": "export const invoice = (id: string) => `invoice ${id}`;\n",
+    "src/orders/api/index.ts": 'import { invoice } from "../../billing/api";\nexport const placeOrder = (id: string) => invoice(id);\n',
+    "src/main.ts": 'import { placeOrder } from "./orders/api";\nconsole.log(placeOrder("1"));\n',
+  };
+  expect(run(files).code).toBe(0);
+  expect(run(files, "suggest").sarif).toContain("is split between"); // advisory only
+});
+
+test("a test spanning the whole package may live at the package root; a test of one feature may not", () => {
+  const base = {
+    "package.json": "{}",
+    "src/billing/index.ts": "export const bill = () => 1;\n",
+    "src/shipping/index.ts": "export const ship = () => 2;\n",
+  };
+  const wide = 'import { bill } from "../src/billing";\nimport { ship } from "../src/shipping";\nif (bill() + ship() !== 3) throw new Error("x");\n';
+  expect(run({ ...base, "tests/acceptance.test.ts": wide }).code).toBe(0);
+  const one = 'import { bill } from "../src/billing";\nif (bill() !== 1) throw new Error("x");\n';
+  const r = run({ ...base, "tests/billing.test.ts": one });
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("tests/billing.test.ts  [tests]");
+});
+
+test("Python: a module of a package does not search its own folder for absolute imports; a script does", () => {
+  const inPackage = { "pkg/__init__.py": "", "pkg/logging.py": "LEVEL = 1\n", "pkg/worker.py": "import logging.handlers\nprint(logging.handlers)\n" };
+  expect(run(inPackage).code).toBe(0);
+  const script = { "tools/helper.py": "def help() -> int:\n    return 1\n", "tools/run.py": "from helper import help\nprint(help())\n" };
+  const r = run(script);
+  expect(r.code).toBe(0);
+  expect(r.sarif).toContain("tools/helper.py");
+});
+
+test("Rust: #[path] inside an inline module resolves from that module's folder; at file level, from the file's", () => {
+  const inline = {
+    "Cargo.toml": CARGO,
+    "src/lib.rs": 'mod nested {\n    #[path = "implementation.rs"]\n    pub mod implementation;\n}\n\npub fn run() -> u32 {\n    nested::implementation::value()\n}\n',
+    "src/nested/implementation.rs": "pub fn value() -> u32 {\n    1\n}\n",
+  };
+  expect(run(inline).code).toBe(0);
+  const top = {
+    "Cargo.toml": CARGO,
+    "src/lib.rs": '#[path = "impls/value.rs"]\nmod value;\n\npub fn run() -> u32 {\n    value::value()\n}\n',
+    "src/impls/value.rs": "pub fn value() -> u32 {\n    1\n}\n",
+  };
+  expect(run(top).code).toBe(0);
+  const wrong = { ...inline, "src/nested/implementation.rs": undefined, "src/implementation.rs": "pub fn value() -> u32 {\n    1\n}\n" };
+  const r = run(Object.fromEntries(Object.entries(wrong).filter(([, v]) => v !== undefined)) as Record<string, string>);
+  expect(r.code).toBe(2);
+  expect(r.stderr).toContain("looked for src/nested/implementation.rs");
 });

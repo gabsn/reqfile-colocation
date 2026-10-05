@@ -12,7 +12,7 @@ code:
           run: bunx @g48in/reqfile-colocation@0.3.0 verify   # fetched from npm and cached by bun; resolves the whole repository; exit 2 when something cannot be verified
           format: sarif
           fast: true
-          fix_hint: Move the file into the feature that uses it, or beside the features that share it; import a module through its interface; keep workflow steps to calls into the feature's scripts.
+          fix_hint: Import a module through its interface; move a test next to the code it tests; keep workflow steps to calls into a feature's scripts; under a declared root, move a helper into the feature it serves or declare it shared.
       - command:
           run: bunx @g48in/reqfile-colocation@0.3.0 suggest   # heuristics that need to know which files form one feature; advisory
           format: sarif

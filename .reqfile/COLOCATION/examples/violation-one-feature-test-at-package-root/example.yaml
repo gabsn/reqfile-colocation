@@ -1,0 +1,5 @@
+expected: violation
+findings:
+  - tests/billing.test.ts
+rationale: "The twin of ok-package-wide-test-at-package-root: tests/billing.test.ts tests billing alone, so it lives with billing, not in the package-wide tests/ folder."
+origin: authored

@@ -26,24 +26,13 @@ export type Verdict = {
 /** Lines of shell a workflow step may hold before it is a feature's logic. */
 const ENTRY_LINES = 8;
 
-/** Above this many sibling folders holding the same child name, the name is
- * a layer repeated in every feature, not a feature spread over tiers. */
-const LAYER_SPREAD = 3;
 
-/** Folder names that structure a package rather than name a feature: the
- * same name on both sides of a dependency says nothing about a split. */
-const STRUCTURAL = new Set([
-  "src", "lib", "source", "sources", "app", "apps", "packages", "pkg", "internal", "test", "tests", "__tests__", "spec",
-  "dist", "build", "out", "bin", "scripts", "docs", "assets", "static", "public", "private", "common", "shared",
-  "utils", "util", "helpers", "types", "generated", "__generated__", "node_modules", "vendor", "examples",
-]);
 
 export function verify(repo: Repo, analysis: Analysis): Verdict {
   const { edges } = analysis;
   const violations: Violation[] = [
     ...interfaceRule(repo, edges),
     ...testsRule(repo, edges),
-    ...splitRule(repo, edges),
     ...entryRule(repo),
     ...rootsRule(repo, edges, repo.config),
   ];
@@ -102,67 +91,6 @@ function packageInternal(repo: Repo, importer: string, boundary: string): boolea
   return pkg !== undefined && paths.within(importer, pkg);
 }
 
-/** split: one feature in two tier or visibility folders. Under one parent,
- * a dependency from A/N to B/N (the same feature in two tiers, such as
- * app/garden and infra/garden), or from N/ to A/N (a feature depending on its
- * own part kept elsewhere, such as widget/evals on oss/widget), puts N's code
- * in two places: deleting N means deleting both. From A/N to N/ is a
- * feature's part using a shared module named like it (user/graphql-api on
- * graphql-api), not a split. Structural names (src, lib, tests...) are not
- * feature names, nor is a name repeated under more than LAYER_SPREAD of the
- * parent's folders: that is a layer every feature has (user/graphql-api,
- * garden/graphql-api...), while a feature spans a few tiers (app, infra, cli). */
-function splitRule(repo: Repo, edges: Edge[]): Violation[] {
-  const out: Violation[] = [];
-  const spread = new Map<string, number>();
-  for (const folder of repo.folders) {
-    if (folder === "") continue;
-    const parent = paths.dir(paths.dir(folder));
-    const key = `${parent}\0${paths.name(folder)}`;
-    spread.set(key, (spread.get(key) ?? 0) + 1);
-  }
-  for (const e of edges) {
-    if (source.consumer(e.from) || source.isTest(e.from) || source.generated(e.from, source.lang(e.from) ? repo.read(e.from) : "")) continue;
-    const toFolder = repo.folders.has(e.to) && !repo.files.has(e.to) ? e.to : paths.dir(e.to);
-    const common = paths.commonFolder([paths.dir(e.from), toFolder]);
-    const below = (folder: string) => (common === "" ? folder : folder.slice(common.length + 1)).split("/").filter((p) => p !== "");
-    const fs = below(paths.dir(e.from));
-    const ts = below(toFolder);
-    if (fs.length === 0 || ts.length === 0) continue;
-    const pairs: [number, number][] = [[1, 1], [0, 1]];
-    for (const [i, j] of pairs) {
-      const name = fs[i];
-      if (name === undefined || name !== ts[j] || STRUCTURAL.has(name.toLowerCase())) continue;
-      // How many folders of the parent of the tiers hold a child of this name.
-      if ((spread.get(`${common}\0${name}`) ?? 0) > LAYER_SPREAD) continue;
-      const a = paths.join(common, fs.slice(0, i + 1).join("/"));
-      const b = paths.join(common, ts.slice(0, j + 1).join("/"));
-      // A package (a folder with its manifest) other features use too is a
-      // shared tool, not half of this feature; N's own parts in other tiers
-      // do not count. A plain folder used by other features stays a part.
-      const partOfN = (f: string) => {
-        const rest = below(paths.dir(f));
-        return rest[0] === name || rest[1] === name;
-      };
-      if (repo.config.shared.some((x) => paths.within(b, x) || paths.within(x, b))) continue;
-      const others = manifestOf(repo, b) !== undefined && edges.some(
-        (o) =>
-          paths.within(o.to, b) &&
-          !paths.within(o.from, b) &&
-          paths.within(o.from, common) &&
-          !partOfN(o.from) &&
-          !source.consumer(o.from) &&
-          !source.isTest(o.from),
-      );
-      if (others) continue;
-      const target = repo.files.has(e.to) ? e.to : (manifestOf(repo, e.to) ?? e.to);
-      const message = `feature \`${name}\` is split between ${a}/ and ${b}/: ${a}/ depends on ${b}/; put it in one ${name}/ folder`;
-      out.push({ path: e.from, line: e.line, rule: "split", message }, { path: target, rule: "split", message });
-      break;
-    }
-  }
-  return out;
-}
 
 /** tests: a test lives in the folder of the code it tests, unless a tool
  * requires its place (Rust tests/, benches/, examples/ next to Cargo.toml). */

@@ -14,7 +14,8 @@ import type { Analysis, Boundary, Edge, Unverifiable } from "./graph";
 import * as paths from "./paths";
 import type { Repo } from "./repo";
 
-type Module = { file: string; segments: string[]; childDir: string; children: Map<string, Module> };
+/** inline: declared with a body in its parent's file (`mod x { ... }`). */
+type Module = { file: string; segments: string[]; childDir: string; children: Map<string, Module>; inline?: boolean };
 type Crate = { folder: string; name: string; roots: string[] };
 
 let parser: Parser | undefined;
@@ -128,14 +129,16 @@ function declareChildren(
     if (!name) continue;
     const inline = item.childForFieldName("body");
     if (inline) {
-      const child: Module = { file: module.file, segments: [...module.segments, name], childDir: paths.join(module.childDir, name), children: new Map() };
+      const child: Module = { file: module.file, segments: [...module.segments, name], childDir: paths.join(module.childDir, name), children: new Map(), inline: true };
       module.children.set(name, child);
       declareChildren(repo, child, inline, parse, unverifiable, seen);
       continue;
     }
     const attribute = pathAttribute(item);
+    // #[path] is relative to the file's folder, or inside an inline module,
+    // to that module's folder (rustc: the inline modules count as folders).
     const candidates = attribute
-      ? [paths.normalize(paths.join(paths.dir(module.file), attribute))]
+      ? [paths.normalize(paths.join(module.inline ? module.childDir : paths.dir(module.file), attribute))]
       : [paths.join(module.childDir, `${name}.rs`), paths.join(module.childDir, `${name}/mod.rs`)];
     const file = candidates.find((c): c is string => c !== null && repo.files.has(c));
     if (!file) {

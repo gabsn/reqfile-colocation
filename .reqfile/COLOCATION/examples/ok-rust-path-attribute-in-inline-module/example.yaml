@@ -1,0 +1,3 @@
+expected: ok
+rationale: "Hard, a false unverifiable 548036a raised: #[path = \"implementation.rs\"] inside `mod nested { ... }` in src/lib.rs resolves from the inline module's folder, src/nested/, as rustc does (cargo check passes)."
+origin: authored

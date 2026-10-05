@@ -18,8 +18,8 @@ function userFolder(e: Edge, repo: Repo): string | null {
 }
 
 export /** For each test, the folder of the code it tests: the common folder of its
- * subjects, or of their package when it tests only entry points, a whole
- * program run end to end. */
+ * subjects, or their package when the test is package-wide (only entry
+ * points, or subjects in several features of the package's root or src/). */
 function homesOfTests(repo: Repo, edges: Edge[]): Map<string, string> {
   const importers = new Map<string, Edge[]>();
   for (const e of edges) importers.set(e.to, [...(importers.get(e.to) ?? []), e]);
@@ -36,8 +36,14 @@ function homesOfTests(repo: Repo, edges: Edge[]): Map<string, string> {
     const production = imported.filter((f) => !support(f));
     const subjects = named.length > 0 ? named : production.length > 0 ? production : imported;
     if (subjects.length === 0) continue;
-    const whole = subjects.every((s) => isEntry(repo, s, importers.get(s) ?? []));
-    homes.set(test, whole ? packageOf(repo, subjects[0]) : paths.commonFolder(subjects.map(paths.dir)));
+    // A test of entry points (a program run end to end), or of code spread
+    // over the whole package, is package-wide: it may live at the package root.
+    const pkg = packageOf(repo, subjects[0]);
+    const common = paths.commonFolder(subjects.map(paths.dir));
+    const atRoot = common === pkg || common === paths.join(pkg, "src");
+    const units = new Set(subjects.map((s) => (common === "" ? s : s.slice(common.length + 1)).split("/")[0]));
+    const whole = subjects.every((s) => isEntry(repo, s, importers.get(s) ?? [])) || (atRoot && units.size >= 2);
+    homes.set(test, whole ? pkg : common);
   }
   return homes;
 }

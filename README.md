@@ -41,8 +41,12 @@ repositories need python3. With Node only, use `npx -y` instead of `bunx`.
 repository (respecting .gitignore). It has two commands, declared as two
 checks of COLOCATION:
 
-- **`verify`, blocking.** Rules that are facts about the resolved dependency
-  graph, so a finding is true by construction. Every judged file ends in one
+- **`verify`, blocking.** Rules read from the resolved dependency graph and a
+  few explicit conventions (an `index.ts` or re-exporting `__init__.py` is an
+  interface, test files are recognized by name, a workflow step of 8 or more
+  lines is a feature's logic). A finding is a fact about resolved code under
+  these conventions, not a proof of an architectural conclusion: the
+  conventions are style choices, documented below. Every judged file ends in one
   of three states, counted on stderr:
   - **compliant**: a SARIF `pass` result;
   - **violation**: a SARIF `fail` result naming its rule, file and line;
@@ -54,9 +58,12 @@ checks of COLOCATION:
   Exit 0 only when every file was verified and no rule is broken; 1 when
   there are violations and everything was verified; 2 when anything was not.
 - **`suggest`, advisory.** Heuristics that need to know which files form one
-  feature, which the code does not say: ownership read from importers, items
-  used only below their file, grab-bag files, features loose in a folder,
-  layer-named folders. Each finding carries a probability; none blocks.
+  feature, which the code does not say: ownership read from importers, one
+  feature split across tier folders (`split`: a shared folder name and a
+  dependency, as app/garden and infra/garden, or oss/widget beside
+  widget/evals), items used only below their file, grab-bag files, features
+  loose in a folder, layer-named folders. Each finding carries a probability;
+  none blocks.
 
 ### How it reads code
 
@@ -76,9 +83,8 @@ literals. A path into another package depends on that package.
 | Rule | Breaks when |
 |---|---|
 | `interface` | an import from outside a boundary lands on an implementation file instead of its interface (a package's own files may reach past its root index; generated code is exempt) |
-| `tests` | a test lives outside the folder of the code it tests (its namesake, else the production code it imports); Rust `tests/`, `benches/`, `examples/` and migrations are tool-required |
-| `entry` | a workflow step runs 8 or more lines of shell on the repository's folders instead of calling a script there |
-| `split` | one feature `N` is in two tier or visibility folders under one parent, one depending on the other: `A/N` on `B/N` (app/garden and infra/garden), or `N/` on `A/N` (widget/evals on oss/widget); structural names (src, lib, tests...) and names repeated under more than three folders (a layer every feature has) are not features |
+| `tests` | a test lives outside the folder of the code it tests (its namesake, else the production code it imports); a test of entry points or of several features of a package may live at the package root; Rust `tests/`, `benches/`, `examples/` and migrations are tool-required |
+| `entry` | a workflow step runs 8 or more lines of shell on the repository's folders instead of calling a script there (8 is a style convention for "thin", not a proof that the lines are a feature's logic) |
 | `roots` | under a root declared in colocation.yaml, a file several of its features use is neither declared shared nor inside one feature |
 
 ### colocation.yaml (optional, strict)
@@ -99,26 +105,29 @@ they excuse. Excepted findings stay in the SARIF as accepted suppressions.
 
 ## Measures
 
-All versions on the same frozen corpus (`corpus-v3`, 68 examples): 40
-development examples, 16 + 12 confirmation examples written by two
-independent authors from the requirement alone, never used for tuning (two of
-them relabeled ok by the author's decision on cargo's tests/, see LABELS.md).
-Caught violations / false alarms on correct examples:
+All versions on the same frozen corpus (`corpus-v4`, 73 examples): 45
+development examples (the last five from a principal engineer's review), 16 +
+12 confirmation examples written by two independent authors from the
+requirement alone, never used for tuning (two relabeled ok by the author's
+decision on cargo's tests/, see LABELS.md). Caught violations / false alarms
+on correct examples:
 
 | Version | Development | Confirmation 1 | Confirmation 2 |
 |---|---|---|---|
-| 0.1.3 | 9/19, 1/21 | 0/7, 4/9 | 1/5, 0/7 |
-| 0.2.0 | 16/19, 2/21 | 1/7, 3/9 | 1/5, 2/7 |
-| **0.3.0 `verify` (blocking)** | 8/19, **0/21** | 1/7, **0/9** | 1/5, **0/7** |
-| 0.3.0 `verify` + `suggest` | 19/19, 0/21 | 2/7, 2/9 | 2/5, 2/7 |
+| 0.1.3 | 10/20, 3/25 | 0/7, 4/9 | 1/5, 0/7 |
+| 0.2.0 | 17/20, 4/25 | 1/7, 3/9 | 1/5, 2/7 |
+| **0.3.0 `verify` (blocking)** | 8/20, **0/25** | 1/7, **0/9** | 1/5, **0/7** |
+| 0.3.0 `verify` + `suggest` | 20/20, 1/25 | 2/7, 2/9 | 2/5, 2/7 |
 
 Confirmation 2 was first measured once with the frozen candidate (0 caught,
 0 false alarms). Its miss `violation-ts-monorepo-emails` showed that workspace
 packages were not resolved without node_modules; the fix that followed
 catches it, so the 1/5 above is contaminated by having seen the case.
 
-What the numbers say: on cases nobody tuned it on, the blocking check raised
-no false alarm on 37 correct examples, and catches few violations: most
+What the numbers say: the blocking check raised no false alarm on 41 correct
+examples, 25 of them development examples it was tuned on and 16 confirmation
+examples it was not; on confirmation it catches few violations (2 of 12, one
+of them contaminated). Most
 violations in the corpus are about ownership (which files form one feature),
 which the code alone does not decide. 0.2.0's 16/19 in development fell to
 2/12 on independent cases: its heuristics fitted their own examples.
@@ -135,7 +144,7 @@ reviewers opened the code behind random samples of findings:
 | tests | 14 | 0 | 2 |
 | interface (two rounds) | 14 | 1 | 3 |
 | entry | 4 | 1 (then fixed: 8-line threshold) | 1 |
-| split | 9 | 1 | 2 |
+| split (then moved to `suggest`, see below) | 9 | 1 | 2 |
 | owner, read from importers | 1 | 16 | 1 → moved to `suggest` |
 
 A reviewer also searched 36 random unflagged files for missed violations and
@@ -149,8 +158,13 @@ tests and test-tree support files were fixed afterwards. Details:
 - Ownership is not in the code: a domain used by one surface may be that
   surface's, or a domain the surface merely uses. `verify` decides it only
   under declared `roots`; elsewhere `suggest` points at it.
+- `split` is advisory: a shared folder name and a dependency do not prove one
+  feature's identity. Two domains each with an `api/` layer, one calling the
+  other's interface, read as a split; adding unrelated `api/` folders makes
+  the finding disappear (names repeated more than three times are layers). It
+  becomes blockable only when the features or tiers are declared.
 - A split between files of different names (`src/public/wrap.ts` and
-  `src/internal/break-words.ts`) is not seen; `split` compares folder names.
+  `src/internal/break-words.ts`) is not seen.
 - Path references are read from literal paths: a path computed at run time,
   and fixtures only tests name by path, are not seen.
 - A shared tool and one of its users named alike (`platform/agent-evals`,
