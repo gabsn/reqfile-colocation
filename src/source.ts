@@ -36,3 +36,27 @@ export function stem(path: string): string {
   if (base.endsWith("_test")) base = base.slice(0, -5);
   return base.toLowerCase();
 }
+
+/** Code a tool writes, such as TanStack Router's routeTree.gen.ts or a
+ * __generated__/ SDK: its layout is the tool's, not a design choice. */
+export function generated(path: string, text: string): boolean {
+  return (
+    /\.(gen|generated)\.[a-z]+$/.test(paths.name(path)) ||
+    /(^|\/)(__generated__|generated)\//.test(path) ||
+    /@generated|auto-?generated|do not edit/i.test(text.slice(0, 400))
+  );
+}
+
+/** Repository-level files: at the root but not code, or in the folders of
+ * CI and tools. They use features; they never make a feature belong at the
+ * root. */
+export function consumer(path: string): boolean {
+  if (/^\.(github|claude|gitlab|circleci|devcontainer|husky|vscode)\//.test(path)) return true;
+  return paths.dir(path) === "" && lang(path) === undefined;
+}
+
+const MANIFESTS = new Set(["package.json", "Cargo.toml", "pyproject.toml", "setup.py", "setup.cfg"]);
+
+export function manifest(path: string): boolean {
+  return MANIFESTS.has(paths.name(path));
+}

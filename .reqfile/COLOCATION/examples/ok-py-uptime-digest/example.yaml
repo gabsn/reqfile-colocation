@@ -1,0 +1,4 @@
+expected: ok
+rationale: "Hard: digest.yml is a one-line entry point into uptime.digest, and ci.yml merely runs pytest over the repository, so both workflows are consumers."
+origin: authored
+split: holdout

@@ -1,0 +1,3 @@
+expected: ok
+rationale: "Hard, a false unverifiable 548036a raised: pkg/worker.py does `import logging.handlers` beside pkg/logging.py; as a module of a package it does not search its own folder, so it imports the standard library (`python3 -m pkg.worker` runs)."
+origin: authored

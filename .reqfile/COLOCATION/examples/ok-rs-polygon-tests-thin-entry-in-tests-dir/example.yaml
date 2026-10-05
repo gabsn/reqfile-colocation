@@ -1,0 +1,4 @@
+expected: ok
+rationale: "Hard: Rust requires integration tests under tests/ next to Cargo.toml, and tests/polygon.rs is only a thin #[path] entry point; the polygon tests and their WKT fixture live in src/polygon/, so the polygon feature carries its own tests and fixtures."
+origin: authored
+split: holdout

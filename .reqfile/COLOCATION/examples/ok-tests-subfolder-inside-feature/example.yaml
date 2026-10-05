@@ -1,4 +1,3 @@
 expected: ok
 rationale: "Hard: a separate tests folder, the shape the rule forbids for a test/ tree mirroring src/, but this one sits inside billing/, so deleting billing deletes its tests too."
 origin: authored
-split: holdout

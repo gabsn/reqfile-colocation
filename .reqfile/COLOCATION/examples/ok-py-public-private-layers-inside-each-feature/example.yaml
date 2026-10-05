@@ -1,0 +1,4 @@
+expected: ok
+rationale: "Hard: the code is still split into public functions and private helpers (underscore modules), but that layering lives inside each feature folder (geocode/, routing/) behind its __init__.py, where layering is free."
+origin: authored
+split: holdout

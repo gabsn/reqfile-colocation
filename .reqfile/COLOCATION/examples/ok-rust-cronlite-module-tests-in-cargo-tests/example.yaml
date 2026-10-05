@@ -1,0 +1,4 @@
+expected: ok
+rationale: "Hard: parse.rs, parse_field.rs and schedule.rs in tests/ mirror the source modules one by one, but cargo's tests/ is a place the tool imposes for integration tests, with no alternative: the author's decision makes it conforming, unlike a mirror tree a test runner could find anywhere. Relabeled from violation (its independent author's reading)."
+origin: authored
+split: holdout

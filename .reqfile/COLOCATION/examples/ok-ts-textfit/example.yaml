@@ -1,0 +1,4 @@
+expected: ok
+rationale: "Hard: each feature folder keeps a private internal/ subfolder next to its index.ts; layering by visibility inside a module is free."
+origin: authored
+split: holdout

@@ -1,0 +1,4 @@
+[
+  { "id": "a", "terms": ["coffee", "beans", "coffee", "grinder"] },
+  { "id": "b", "terms": ["tea", "kettle"] }
+]

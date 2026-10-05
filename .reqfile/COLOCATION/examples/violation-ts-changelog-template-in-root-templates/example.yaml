@@ -1,0 +1,6 @@
+expected: violation
+findings:
+  - templates/changelog.md
+rationale: "Hard: no import points at it, but the changelog script passes templates/changelog.md to src/changelog/cli.ts; the template is used only by the changelog feature yet lives outside its folder, so the feature cannot be deleted on its own."
+origin: authored
+split: holdout

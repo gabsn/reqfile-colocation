@@ -1,0 +1,9 @@
+expected: violation
+findings:
+  - atlas/public/geocode.py
+  - atlas/public/routing.py
+  - atlas/private/gazetteer.py
+  - atlas/private/haversine.py
+rationale: "Hard: the same public/private layering as a conforming package, but used as the top-level grouping: folders group by visibility, so geocoding and routing are each split across public/ and private/ and neither can be deleted as one folder."
+origin: authored
+split: holdout

@@ -1,0 +1,4 @@
+expected: ok
+rationale: "Hard: unit tests sit in each module, and tests/ next to Cargo.toml holds only one end-to-end smoke test of the crate's public API."
+origin: authored
+split: holdout

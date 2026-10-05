@@ -1,0 +1,4 @@
+expected: ok
+rationale: "Hard: two apps consume the emails package, both through its index.ts; the consumers are not part of the feature and the package is a shared module beside them."
+origin: authored
+split: holdout

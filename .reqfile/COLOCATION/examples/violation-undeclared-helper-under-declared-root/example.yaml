@@ -1,0 +1,5 @@
+expected: violation
+findings:
+  - src/sources.rs
+rationale: "The program of violation-feature-loose-in-flat-folder, with src/ declared a root whose shared module is format.rs: under a declared root each direct file or folder is a feature, so sources.rs, used by add.rs and update.rs but not declared shared, must move into the one feature it serves. The declaration is what makes this certain rather than likely."
+origin: authored

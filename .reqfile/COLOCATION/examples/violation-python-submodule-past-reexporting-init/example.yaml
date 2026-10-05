@@ -1,0 +1,5 @@
+expected: violation
+findings:
+  - voice/server.py
+rationale: "Hard: voice/models/__init__.py re-exports LanguageModel and load, which makes it voice.models's interface, so `from voice.models.loaders import load` in server.py reaches the implementation file instead of `from voice.models import load`. Python submodules are importable, but a package that names its exports has declared what others may use. Relabeled from ok (the author's spec: an __init__.py that re-exports is the interface)."
+origin: authored

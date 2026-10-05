@@ -1,0 +1,6 @@
+expected: violation
+findings:
+  - .github/workflows/digest.yml
+rationale: "Hard: the digest's rendering logic, used only by the digest feature and untested, lives inline in the workflow instead of inside uptime/digest/, so the workflow is not a thin entry point."
+origin: authored
+split: holdout

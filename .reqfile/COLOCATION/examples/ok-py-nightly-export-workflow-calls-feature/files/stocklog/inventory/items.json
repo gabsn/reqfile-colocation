@@ -1,0 +1,5 @@
+[
+  { "sku": "BOLT-M6", "name": "M6 bolt", "quantity": 3 },
+  { "sku": "NUT-M6", "name": "M6 nut", "quantity": 40 },
+  { "sku": "WASHER-6", "name": "6 mm washer", "quantity": 0 }
+]

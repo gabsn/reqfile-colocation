@@ -1,0 +1,5 @@
+expected: violation
+findings:
+  - src/tax.rs
+rationale: "The same program as ok-rust-module-uses-its-own-submodule, with tax.rs beside billing.rs instead of inside billing/: only billing uses it (main reaches the rate through billing's re-export), so deleting billing leaves tax.rs behind."
+origin: authored

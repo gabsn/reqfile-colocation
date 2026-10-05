@@ -1,0 +1,6 @@
+expected: violation
+findings:
+  - src/reports/weekly.ts
+rationale: "Hard: formatDigest is re-exported by notifications/index.ts, yet reports imports it from the implementation file notifications/format.ts, bypassing the interface (other code reaches a feature only through its interface)."
+origin: authored
+split: holdout

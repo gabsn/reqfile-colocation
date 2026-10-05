@@ -1,0 +1,3 @@
+expected: ok
+rationale: "Hard, a false alarm 0.2.0 raised: billing/__init__.py re-exports its submodule tax and lists it in __all__, so `from billing import tax` in app/quote.py takes it through billing's interface. billing is used by app and reports, so it is rightly a module of its own beside them."
+origin: authored

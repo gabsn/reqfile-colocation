@@ -1,0 +1,4 @@
+expected: ok
+rationale: "Hard: the scheduled workflow lives in the tool-required .github/workflows/ but is a thin entry point (python -m stocklog.export) into the export feature, and ci.yml merely runs pytest over the whole repository, so it is a consumer."
+origin: authored
+split: holdout

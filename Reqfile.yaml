@@ -4,12 +4,18 @@ reqfile: 1
 code:
   - id: COLOCATION
     ref: Parnas, "On the Criteria To Be Used in Decomposing Systems into Modules"; Martin, Common Closure Principle; Gabriel, Patterns of Software (locality)
-    must: "Each feature or domain lives in one folder or file that can be deleted on its own: everything only it uses, tests and fixtures included, is inside, other code reaches it only through its interface, and code several features share is a module of its own beside them. Folders group code by feature, never by technical layer or by visibility, while inside a module any layering (pure domain, I/O, interfaces, public and private parts) is free; a location a tool requires holds only a thin entry point into the feature, and code that merely uses a feature elsewhere is not part of it."
+    must: "Each feature or domain lives in one folder or file that can be deleted on its own: everything only it uses (code, tests, fixtures, infrastructure) is inside it, other code reaches it only through its interface, and what several features share is a module of its own at their common level, so a folder's place says whom it serves (infra/ serves all, billing/infra/ serves billing). Folders group code by feature, never by technical layer or by visibility, while inside a module any layering is free, and code stays where a tool imposes it (CI workflows, cargo's tests/, generated code) when moving it would only add complexity, as long as it holds no feature's logic beyond what the tool needs."
     why: What changes together lives together, so a change touches one folder, a reader or agent can use a feature without reading its implementation, and deleting a feature deletes one folder and leaves no orphans behind.
     who: Anyone adding a file; agents deciding where new code goes.
     checks:
       - command:
-          run: bunx @g48in/reqfile-colocation@0.2.0   # fetched from npm and cached by bun; reads the whole repository, prints SARIF with a probability per file
+          run: bunx @g48in/reqfile-colocation@0.3.0 verify   # fetched from npm and cached by bun; resolves the whole repository; exit 2 when something cannot be verified
           format: sarif
-          thresholds: { violation_above: 0.7 }   # the heuristics report 0.75 to 0.9; measured on .reqfile/COLOCATION/examples
-          fix_hint: Group the file with the feature that uses it, inside that feature's module rather than a layer folder; split a shared file by the features its items serve; import a module through its interface.
+          fast: true
+          fix_hint: Import a module through its interface; move a test next to the code it tests; keep workflow steps to calls into a feature's scripts; under a declared root, move a helper into the feature it serves or declare it shared.
+      - command:
+          run: bunx @g48in/reqfile-colocation@0.3.0 suggest   # heuristics that need to know which files form one feature; advisory
+          format: sarif
+          thresholds: { violation_above: 0.7 }
+          mode: advisory
+          fix_hint: Check whether the files named form one feature; if so give it a folder, if not declare the shared module in colocation.yaml.
