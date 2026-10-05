@@ -1,0 +1,4 @@
+expected: ok
+rationale: "The manifest code is used only by the snapshot command and lives inside snapshot/, with each command's tests beside its code."
+origin: authored
+split: holdout

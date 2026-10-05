@@ -1,0 +1,8 @@
+expected: violation
+findings:
+  - app/invites_handler.py
+  - app/invites_store.py
+  - app/test_invites_handler.py
+rationale: "The invites feature is three files loose in app/ among other features instead of a folder of its own."
+origin: authored
+split: holdout
