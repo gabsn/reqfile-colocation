@@ -1,0 +1,5 @@
+expected: violation
+findings:
+  - src/billing/index.ts
+rationale: "billing/ is a domain with its own interface, but only cart/ uses it. Everything only one feature uses lives inside it, so deleting cart should delete billing; beside cart, it is left behind unused. Compare ok-through-the-interface, where billing has two users and is rightly a module of its own beside them."
+origin: authored

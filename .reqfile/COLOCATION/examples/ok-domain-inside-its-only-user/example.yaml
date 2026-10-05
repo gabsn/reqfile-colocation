@@ -1,0 +1,3 @@
+expected: ok
+rationale: "billing/, used only by cart, lives inside cart/ and is still entered through its interface, index.ts. Once a second feature uses it, it moves out beside them as a module of its own."
+origin: authored

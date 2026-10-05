@@ -3,6 +3,6 @@ findings:
   - src/add.rs
   - src/update.rs
   - src/sources.rs
-rationale: "Hard: the pins feature is three files, add.rs, update.rs and the sources.rs they share, loose in src/ beside check.rs and format.rs. Nothing groups them, so deleting pins means picking its files out among the others. Each file alone is in the lowest folder of its users, which is why it looks fine; the feature as a whole has no folder of its own."
+rationale: "Hard: the pins feature is three files, add.rs, update.rs and the sources.rs they share, loose in src/ beside check.rs and format.rs. Nothing groups them, so deleting pins means picking its files out among the others. Each file alone is in the lowest folder of its users, which is why it looks fine; the feature as a whole has no folder of its own. A blind reviewer read add and update as two features sharing a module and labeled it ok; the author settled it as a violation."
 origin: authored
 known: miss
