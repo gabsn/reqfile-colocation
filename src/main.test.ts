@@ -202,3 +202,18 @@ test("interface: a package's own files reach their siblings past its root index;
   expect(test.code).toBe(1);
   expect(test.stderr).toContain("src/ws/client.test.ts:1  [interface]");
 });
+
+test("a workspace package resolves by its package.json name without node_modules, and its interface applies", () => {
+  const files = {
+    "package.json": '{ "private": true, "workspaces": ["packages/*", "apps/*"] }',
+    "packages/emails/package.json": '{ "name": "@acme/emails" }',
+    "packages/emails/index.ts": 'export { render } from "./render";\n',
+    "packages/emails/render.ts": "export const render = (s: string) => `<p>${s}</p>`;\n",
+    "apps/worker/package.json": '{ "name": "worker" }',
+    "apps/worker/src/digest.ts": 'import { render } from "@acme/emails/render";\nexport const digest = () => render("x");\n',
+  };
+  const deep = run(files);
+  expect(deep.code).toBe(1);
+  expect(deep.stderr).toContain("apps/worker/src/digest.ts:1  [interface]");
+  expect(run({ ...files, "apps/worker/src/digest.ts": 'import { render } from "@acme/emails";\nexport const digest = () => render("x");\n' }).code).toBe(0);
+});

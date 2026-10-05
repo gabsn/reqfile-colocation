@@ -1,7 +1,7 @@
 # reqfile-colocation
 
-A shareable [reqfile](https://reqfile.dev) requirement: **COLOCATION**, code
-lives in the folder of its feature, which can be deleted on its own.
+A shareable [reqfile](https://reqfile.dev) requirement: **COLOCATION**, each
+feature owns its code, exposes an interface, and can be deleted on its own.
 
 This is a spike of what a community requirement package looks like: the
 requirement, its checker and its labeled benchmark, in one repository with the
@@ -18,74 +18,173 @@ src/                              # the checker, in TypeScript, published to npm
 Try it, then adopt it (reqfile 0.3 or later, with [Bun](https://bun.sh) installed):
 
 ```sh
-reqfile eval --use gabsn/reqfile-colocation@v0.2.0    # its score on its examples
-reqfile check --use gabsn/reqfile-colocation@v0.2.0   # its findings on your code
-reqfile add gabsn/reqfile-colocation@v0.2.0           # writes the line below
+reqfile eval --use gabsn/reqfile-colocation@v0.3.0    # its score on its examples
+reqfile check --use gabsn/reqfile-colocation@v0.3.0   # its findings on your code
+reqfile add gabsn/reqfile-colocation@v0.3.0           # writes the line below
 ```
 
 which writes:
 
 ```yaml
 code:
-  - { id: COLOCATION, use: gabsn/reqfile-colocation@<commit> }  # v0.2.0
+  - { id: COLOCATION, use: gabsn/reqfile-colocation@<commit> }  # v0.3.0
 ```
 
-The check runs `bunx @g48in/reqfile-colocation@0.2.0`: Bun fetches the checker from
-npm once and caches it, nothing to install. With Node only, replace the check
-in your use block with `run: npx -y @g48in/reqfile-colocation@0.2.0`.
+The checks run `bunx @g48in/reqfile-colocation@0.3.0 verify` (blocking) and
+`... suggest` (advisory): Bun fetches the checker and its dependencies
+(TypeScript 6, web-tree-sitter, yaml) from npm once and caches them. Python
+repositories need python3. With Node only, use `npx -y` instead of `bunx`.
 
 ## The checker
 
-`reqfile-colocation` runs from the repository root, reads the whole repository
-(respecting .gitignore) and prints SARIF: one result per judged file, `fail`
-or `pass`, each with `properties.probability`, the probability that the file
-breaks COLOCATION. Exit 0 when nothing fails, 1 when something does, 2 when it
-cannot run.
+`reqfile-colocation` runs from the repository root and reads the whole
+repository (respecting .gitignore). It has two commands, declared as two
+checks of COLOCATION:
 
-It resolves imports of TS/JS (with tsconfig path aliases), Python and Rust into a file graph, reads the GitHub workflows, then flags:
+- **`verify`, blocking.** Rules that are facts about the resolved dependency
+  graph, so a finding is true by construction. Every judged file ends in one
+  of three states, counted on stderr:
+  - **compliant**: a SARIF `pass` result;
+  - **violation**: a SARIF `fail` result naming its rule, file and line;
+  - **unverifiable**: a local import that resolves to nothing, a file that
+    does not parse, a `mod x;` without its file, a stale exception, Python
+    files without python3. Listed on stderr; the run exits 2, which reqfile
+    reports as an error that fails the run.
 
-| Signal | Probability |
+  Exit 0 only when every file was verified and no rule is broken; 1 when
+  there are violations and everything was verified; 2 when anything was not.
+- **`suggest`, advisory.** Heuristics that need to know which files form one
+  feature, which the code does not say: ownership read from importers, items
+  used only below their file, grab-bag files, features loose in a folder,
+  layer-named folders. Each finding carries a probability; none blocks.
+
+### How it reads code
+
+| Language | Parser | Resolution | Boundary (interface) |
+|---|---|---|---|
+| TypeScript, JavaScript | TypeScript 6's syntax tree | TypeScript's module resolution with the nearest tsconfig/jsconfig (`extends`, `paths`, `baseUrl`); workspace packages by their package.json `name`, `exports`, `main`; assets through aliases | a folder whose `index.*` exports |
+| Python | python3's `ast` | the importer's folder, pyproject/setup roots and their `src/`, the repository root; a regular package wins over a namespace folder; names bound under `if`/`try` count | a package whose `__init__.py` re-exports or defines `__all__`; a name it exports goes through it |
+| Rust | tree-sitter's Rust grammar | the module tree from every crate root through `mod` (with `#[path]`); `use` trees, qualified paths, paths inside macro arguments | rustc enforces visibility, so no path that compiles is a bypass |
+
+Dependencies outside imports count too: paths in workflow steps, shell
+scripts, package.json scripts/`bin`/`exports`, task and runner files
+(mise.toml, Makefile, Dockerfile, wrangler.toml...), manifests and string
+literals. A path into another package depends on that package.
+
+### Blocking rules
+
+| Rule | Breaks when |
 |---|---|
-| a file used only from one folder, living outside it | 0.9 |
-| a test living outside the folder of the code it tests | 0.85 |
-| one feature split across sibling layer folders (models/, services/…) | 0.85 |
-| an import that enters a folder past its interface (index.ts or mod.rs exporting items, __init__.py defining __all__), unless it targets generated code or a nested interface | 0.8 |
-| an item, or the items one block names, whose users all live in a folder without its file (not in an interface) | 0.75 |
-| at a root, a file whose items serve disjoint sets of users | 0.75 |
-| at a root, a helper used by several of its features but not all: those files form one feature with no folder | 0.75 |
-| a workflow step running 5 or more lines of shell on a top-level folder's files, instead of calling a script there | 0.8 |
+| `interface` | an import from outside a boundary lands on an implementation file instead of its interface (a package's own files may reach past its root index; generated code is exempt) |
+| `tests` | a test lives outside the folder of the code it tests (its namesake, else the production code it imports); Rust `tests/`, `benches/`, `examples/` and migrations are tool-required |
+| `entry` | a workflow step runs 8 or more lines of shell on the repository's folders instead of calling a script there |
+| `split` | one feature `N` is in two tier or visibility folders under one parent, one depending on the other: `A/N` on `B/N` (app/garden and infra/garden), or `N/` on `A/N` (widget/evals on oss/widget); structural names (src, lib, tests...) and names repeated under more than three folders (a layer every feature has) are not features |
+| `roots` | under a root declared in colocation.yaml, a file several of its features use is neither declared shared nor inside one feature |
 
-A probability above 0.7 is a violation (`thresholds` in Reqfile.yaml); files
-judged fine are reported as `pass` results with 0.1.
+### colocation.yaml (optional, strict)
 
-Imports are read with regular expressions, not parsers: fast (about 60 ms on
-a mid-size repository), but approximate. The checker is plain TypeScript with
-no dependencies, bundled to one Node-compatible file on publish.
+```yaml
+roots:                       # make ownership checkable where it matters
+  - path: src                # each direct file or folder of src/ is a feature
+    shared: [src/format.rs]  # the modules several features share, by decision
+exceptions:                  # explicit, limited, reported in every run
+  - path: test/**
+    rule: tests
+    reason: the deployment image runs test/ only
+```
+
+An unknown key, a declared path that does not exist, or an exception that
+matches no finding fails the run (exit 2): exceptions cannot outlive the code
+they excuse. Excepted findings stay in the SARIF as accepted suppressions.
+
+## Measures
+
+All versions on the same frozen corpus (`corpus-v2`, 68 examples): 40
+development examples, 16 + 12 confirmation examples written by two
+independent authors from the requirement alone, never used for tuning.
+Caught violations / false alarms on correct examples:
+
+| Version | Development | Confirmation 1 | Confirmation 2 |
+|---|---|---|---|
+| 0.1.3 | 9/19, 1/21 | 0/8, 3/8 | 1/6, 0/6 |
+| 0.2.0 | 16/19, 2/21 | 1/8, 2/8 | 1/6, 2/6 |
+| **0.3.0 `verify` (blocking)** | 8/19, **0/21** | 1/8, **0/8** | 0/6, **0/6** |
+| 0.3.0 `verify` + `suggest` | 19/19, 0/21 | 2/8, 2/8 | 1/6, 2/6 |
+
+Confirmation 2 was measured once with the frozen candidate, as above. Its
+miss `violation-ts-monorepo-emails` showed that workspace packages were not
+resolved without node_modules; the fix that followed catches it (1/6, still
+0/6 false alarms), a number contaminated by having seen the case.
+
+What the numbers say: on cases nobody tuned it on, the blocking check raised
+no false alarm in 35 correct examples, and catches few violations: most
+violations in the corpus are about ownership (which files form one feature),
+which the code alone does not decide. 0.2.0's 16/19 in development fell to
+2/14 on independent cases: its heuristics fitted their own examples.
+
+### On real repositories
+
+`verify` on eight repositories (arkadia, reqfile-colocation, voxrouter,
+platform, skoolradar, brain, mini, focustree): 0.3 s to 2 s each; every
+unverifiable import left is a real broken import (3 in voxrouter). Independent
+reviewers opened the code behind random samples of findings:
+
+| Rule | True | False | Unsure |
+|---|---|---|---|
+| tests | 14 | 0 | 2 |
+| interface (two rounds) | 14 | 1 | 3 |
+| entry | 4 | 1 (then fixed: 8-line threshold) | 1 |
+| split | 9 | 1 | 2 |
+| owner, read from importers | 1 | 16 | 1 → moved to `suggest` |
+
+A reviewer also searched 36 random unflagged files for missed violations and
+found 17, most needing feature knowledge (tiers named alike, file-name
+prefixes) or links only an import back into src/ shows; interface bypasses by
+tests and test-tree support files were fixed afterwards. Details:
+[LABELS.md](LABELS.md) and [DESIGN.md](DESIGN.md).
+
+### Limits
+
+- Ownership is not in the code: a domain used by one surface may be that
+  surface's, or a domain the surface merely uses. `verify` decides it only
+  under declared `roots`; elsewhere `suggest` points at it.
+- A split between files of different names (`src/public/wrap.ts` and
+  `src/internal/break-words.ts`) is not seen; `split` compares folder names.
+- Path references are read from literal paths: a path computed at run time,
+  and fixtures only tests name by path, are not seen.
+- A shared tool and one of its users named alike (`platform/agent-evals`,
+  `voxrouter/agent-evals`) reads as a split when no other code uses the tool.
+- Python dynamic imports and Rust items generated by macros are not read.
+- Inline logic in a workflow that names no repository path is not counted.
+
+## Adopting it as a blocking check
+
+Make the `verify` check `mode: blocking` (the default) in a repository when:
+
+1. on the frozen corpus its rules raise no false alarm, development and
+   confirmation alike (met by 0.3.0: 0/35);
+2. on that repository it exits 0 or 1, never 2: every local import resolves,
+   or an exception says why not;
+3. every finding there has been reviewed as true, fixed, or excepted with a
+   reason;
+4. a sample of unflagged files reviewed by hand shows no miss of a blocking
+   rule;
+5. it runs in under 10 s there.
+
+Keep `suggest` advisory. Ownership becomes blocking only through `roots`.
 
 ## Measure it
 
 ```sh
-bun install && bun test          # unit tests
-reqfile eval                     # the labeled benchmark
+bun install && bun test          # unit and end-to-end tests of the checker
+reqfile eval                     # the labeled corpus, as published
 ```
 
-Each violation names in `findings` every file a correct checker must flag.
-About a quarter of the examples, whole pairs at a time, are `split: holdout`:
-measured apart and never used to tune the checker. Failures the checker is
-known to have are marked `known: miss` or `known: false_alarm`, and are
-removed once it handles them. Labels were checked blind: an independent
-reviewer labeled every case from the `must` alone, and each disagreement was
-settled by rewording the `must`, fixing the case, or a decision by the author.
-
-Examples are chosen because a person judges them hard, near misses on both
-sides of the rule included, not because the checker fails them, and each
-rationale says why. A benchmark every version passes cannot show that a change
-helps, so some cases stay missed until the checker improves.
-
-`reqfile eval` runs the version named in Reqfile.yaml, the published one. To
-measure the working copy before a release, `bun run build` and temporarily set
-the check to `run: node dist/main.js`. reqfile has no way yet to point a
-package's own checks at its working copy; the spike surfaced this.
+Each violation names in `findings` every file a correct checker must flag
+(reqfile requires all of them). `split: holdout` marks the confirmation
+examples, written by independent authors and never used for tuning.
+`reqfile eval` runs the version named in Reqfile.yaml; to measure the working
+copy, `bun run build` and point the checks at `node dist/main.js`.
 
 ## Release
 

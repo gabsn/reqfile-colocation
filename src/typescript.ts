@@ -197,6 +197,57 @@ function parseConfig(repo: Repo, path: string): Config {
   return { options, aliases: entries.map(alias) };
 }
 
+let packages: Map<string, string> | undefined;
+
+/** The repository's own package named by a bare specifier, from the `name`
+ * of each package.json: its folder and the subpath after the name. */
+function workspacePackage(repo: Repo, text: string): [string, string] | undefined {
+  if (!packages) {
+    packages = new Map();
+    for (const f of repo.files) {
+      if (paths.name(f) !== "package.json" || f.split("/").includes("node_modules")) continue;
+      const name = (() => {
+        try {
+          return (JSON.parse(repo.read(f)) as { name?: unknown }).name;
+        } catch {
+          // A package.json that does not parse names no package.
+          return undefined;
+        }
+      })();
+      if (typeof name === "string" && name !== "") packages.set(name, paths.dir(f));
+    }
+  }
+  for (const [name, folder] of packages) {
+    if (text === name) return [folder, ""];
+    if (text.startsWith(`${name}/`)) return [folder, text.slice(name.length + 1)];
+  }
+  return undefined;
+}
+
+/** The files a package.json declares for `subpath`: its `exports` entry
+ * (conditions in order), or for the package itself, main, module, types. */
+function declaredEntries(repo: Repo, folder: string, subpath: string): string[] {
+  let doc: { exports?: unknown; main?: unknown; module?: unknown; types?: unknown };
+  try {
+    doc = JSON.parse(repo.read(paths.join(folder, "package.json")));
+  } catch {
+    // Unparsable: no declared entry; the guesses still apply.
+    return [];
+  }
+  const all = (v: unknown): string[] =>
+    typeof v === "string" ? [v] : Array.isArray(v) ? v.flatMap(all) : typeof v === "object" && v !== null ? Object.values(v).flatMap(all) : [];
+  const key = subpath === "" ? "." : `./${subpath}`;
+  const exports = doc.exports;
+  let targets: string[] = [];
+  if (typeof exports === "object" && exports !== null && !Array.isArray(exports)) {
+    const map = exports as Record<string, unknown>;
+    if (Object.keys(map).some((k) => k.startsWith("."))) targets = all(map[key]);
+    else if (subpath === "") targets = all(map);
+  } else if (subpath === "") targets = all(exports);
+  if (subpath === "") targets.push(...all(doc.main), ...all(doc.module), ...all(doc.types));
+  return targets.map((t) => paths.normalize(paths.join(folder, t))).filter((t): t is string => t !== null);
+}
+
 /** A specifier as TypeScript resolves it from `file`: a repository file,
  * "external" for a package or built-in, or why it cannot be resolved. */
 function resolve(
@@ -238,6 +289,19 @@ function resolve(
   const installed = (a: Alias) => a.targets.every((t) => t.split("/").includes("node_modules") || t.startsWith("../"));
   if (matched.length > 0 && !matched.every(installed)) {
     return { reason: `\`${text}\` matches a path alias but does not resolve to a file` };
+  }
+  // A workspace package of this repository, before or without installing:
+  // its folder, then the subpath as TypeScript would look for a file.
+  const workspace = workspacePackage(repo, text);
+  if (workspace) {
+    const [folder, subpath] = workspace;
+    const declared = declaredEntries(repo, folder, subpath);
+    const base = subpath === "" ? folder : paths.join(folder, subpath);
+    const guesses = [base, ...["ts", "tsx", "js", "mjs"].flatMap((x) => [`${base}.${x}`, `${base}/index.${x}`, `${base}/src/index.${x}`])];
+    for (const candidate of [...declared, ...guesses]) {
+      if (repo.files.has(candidate)) return { path: candidate };
+    }
+    return { reason: `\`${text}\` names workspace package ${folder}/ but no file there` };
   }
   return "external";
 }

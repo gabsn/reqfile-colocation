@@ -98,7 +98,7 @@ feature identity.
   CLI) are ordinary users: they must go through interfaces like anyone.
 - Tests are users of what they test only for the tests rule.
 
-### Blocking rules
+### Blocking rules (as proposed; see Outcome for what review changed)
 
 1. **interface** — an import from outside a boundary lands on its interface or
    on a name the interface exports (Python), never on an implementation file.
@@ -190,3 +190,31 @@ COLOCATION's verification check becomes `mode: blocking` in a repository when:
    violation, or fixed, or excepted with a reason.
 4. A sample of unflagged files reviewed by hand shows no blocking-rule miss.
 5. The run time stays under 10 s on the repository.
+
+## Outcome
+
+What independent review of real findings changed in the proposal:
+
+- **owner is advisory.** Ownership read from importers was right in 1 of 18
+  reviewed findings on real repositories: a domain used by one surface or
+  composition root (an MCP worker, a GraphQL stack, an app using a design
+  system) is not that surface's. Without declared features the graph shows
+  who uses what, not who owns it. `roots` in colocation.yaml is the
+  verifiable form; `suggest` keeps the heuristic.
+- **split is new and blocking.** The layer splits the reviewers found missed
+  (app/<feature> and infra/<feature>, routes/components/lib for one feature,
+  oss/widget beside widget/evals) share a signature that does not depend on a
+  name alone: the same feature name in two sibling tier folders and a real
+  dependency between them, excluding structural names and names repeated as a
+  layer in more than three folders. Reviewed: 9 true, 1 false, 2 unsure of 12.
+- **entry** counts 8 lines, not 5 (a 5-line branch on the CI event was a false
+  alarm); **interface** judges tests too, and lets a package's own files
+  reach past its root index.
+- Resolution gaps found on real code and fixed: Vite query suffixes, aliases
+  onto installed packages and onto assets, Python names bound under `if`/`try`,
+  regular packages before namespace folders, paths in Rust macro arguments,
+  entry points declared in package.json `exports`, runner files
+  (wrangler.toml, Dockerfile...), workspace packages without node_modules.
+
+Measures, limits and the adoption criteria with their status are in the
+README; label decisions in LABELS.md.
