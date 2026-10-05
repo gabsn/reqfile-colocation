@@ -1,4 +1,4 @@
-//! Pinned sources: `pin add` and `pin update`, and the git lookups they share.
+//! Pinned sources: `pin add` and `pin update`.
 
 mod add;
 mod sources;

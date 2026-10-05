@@ -1,6 +1,6 @@
 {
   "name": "@g48in/reqfile-colocation",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "reqfile checker for COLOCATION: each feature owns its code, exposes an interface, and can be deleted on its own",
   "keywords": [
     "reqfile-requirement",

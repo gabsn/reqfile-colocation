@@ -5,7 +5,9 @@
 import type { Analysis, Edge } from "./graph";
 import * as paths from "./paths";
 import type { Repo } from "./repo";
+import { isCrateRoot, isEntry, manifestOf, orRoot, rootFolders, homesOfTests, relativeTo, toolRequired, userFolder } from "./places";
 import * as source from "./source";
+import type { Violation } from "./verify";
 
 /** The probability that a file breaks COLOCATION, and why. */
 export type Judgment = { path: string; probability: number; message: string };
@@ -14,6 +16,9 @@ const LAYERED = 0.85;
 const GRAB_BAG = 0.75;
 const ITEM_BELOW = 0.75;
 const LOOSE_FEATURE = 0.75;
+/** Ownership read from who imports: right for a layer split, wrong when the
+ * only user is a surface or a composition root, which the graph cannot tell. */
+const OWNER = 0.8;
 const PLACED = 0.1;
 
 /** Folder names that group code by technical layer rather than by feature. */
@@ -33,7 +38,7 @@ export function judge(repo: Repo, analysis: Analysis): Judgment[] {
     judged.add(path);
     findings.set(path, [...(findings.get(path) ?? []), [probability, message]]);
   };
-  const roots = rootFolders(repo.files);
+  const roots = rootFolders(repo);
   const users = new Map<string, Edge[]>();
   for (const edge of edges) users.set(edge.to, [...(users.get(edge.to) ?? []), edge]);
   for (const [target, targetEdges] of users) {
@@ -50,6 +55,7 @@ export function judge(repo: Repo, analysis: Analysis): Judgment[] {
     if (clusters) add(target, GRAB_BAG, `holds items that serve separate users: ${clusters}`);
   }
   for (const [path, message] of looseFeatures(roots, repo, edges)) add(path, LOOSE_FEATURE, message);
+  for (const v of ownerRule(repo, analysis.edges)) add(v.path, OWNER, v.message);
   const inside = new Set(analysis.boundaries.map((b) => b.folder));
   for (const [path, message] of layered(repo.files, inside)) add(path, LAYERED, message);
   return [...judged].sort().map((path) => {
@@ -164,17 +170,6 @@ function words(name: string): string[] {
 
 
 
-/** Folders where each file is a feature of its own: the repository root, each
- * package or crate root, and its src/. */
-function rootFolders(files: Set<string>): Set<string> {
-  const roots = new Set([""]);
-  for (const file of files) {
-    if (!source.manifest(file)) continue;
-    roots.add(paths.dir(file));
-    roots.add(paths.join(paths.dir(file), "src"));
-  }
-  return roots;
-}
 
 /** Items of a file, grouped with the items their top-level block names, whose
  * production users all live in one folder below the file's: each group and
@@ -229,3 +224,73 @@ function looseFeatures(roots: Set<string>, repo: Repo, edges: Edge[]): [string, 
   return found;
 }
 
+
+/** owner: what only one folder uses lives in it. A package (a folder with
+ * its manifest) used only from one folder lives beside it, in its parent:
+ * the evals of a product sit next to the product, not around it. */
+function ownerRule(repo: Repo, edges: Edge[]): Violation[] {
+  const targets = new Set(edges.map((e) => e.to));
+  const testHomes = homesOfTests(repo, edges);
+  const out: Violation[] = [];
+  for (const target of [...targets].sort()) {
+    if (source.consumer(target) || source.isTest(target) || isCrateRoot(repo, target) || toolRequired(repo, target)) continue;
+    if (repo.files.has(target) && source.generated(target, source.lang(target) ? repo.read(target) : "")) continue;
+    const folder = repo.folders.has(target) && !repo.files.has(target);
+    // A plain folder named in a command is no unit of ownership; a package is.
+    if (folder && !manifestOf(repo, target)) continue;
+    const outside = edges.filter((e) =>
+      folder ? paths.within(e.to, target) && !paths.within(e.from, target) : e.to === target && e.from !== target,
+    );
+    const production = outside.filter((e) => !source.isTest(e.from));
+    const homes = production.map((e) => userFolder(e, repo)).filter((h): h is string => h !== null);
+    let home: string;
+    let users: string[];
+    if (homes.length > 0) {
+      home = paths.commonFolder(homes);
+      users = [...new Set(production.filter((e) => userFolder(e, repo) !== null).map((e) => e.from))];
+    } else {
+      // Test support (fixtures) follows its tests, when tests import it: a
+      // path a test names says little, as code may reach the file unseen.
+      const tests = [...new Set(outside.filter((e) => source.isTest(e.from) && e.kind === "import").map((e) => e.from))];
+      if (tests.length === 0 || production.length > 0) continue;
+      home = paths.commonFolder(tests.map((t) => testHomes.get(t) ?? paths.dir(t)));
+      users = tests;
+    }
+    const only = folder || homes.length === 0 ? undefined : soleSiblingUser(repo, target, users, edges);
+    if (only) {
+      out.push({
+        path: target,
+        rule: "owner",
+        message: `only ${paths.name(only)} uses ${paths.name(target)}: make it part of ${paths.name(only)}'s module (in the file, or a folder of its own)`,
+      });
+      continue;
+    }
+    const pkg = folder && [...repo.files].some((f) => source.manifest(f) && paths.dir(f) === target);
+    const place = pkg ? paths.dir(home) : home;
+    if (paths.within(target, place)) continue;
+    const where = folder ? `${target}/` : target;
+    const location = folder ? (manifestOf(repo, target) ?? target) : target;
+    out.push({
+      path: location,
+      rule: "owner",
+      message: `${where} is used only from ${orRoot(home)}/ (${users.map((u) => relativeTo(home, u)).join(", ")}); move it ${pkg ? "beside" : "into"} ${orRoot(pkg ? place : home)}/`,
+    });
+  }
+  return out;
+}
+
+/** At a root, where each file is a feature of its own (a package or crate
+ * root, its src/, a root declared in colocation.yaml), a module that one other
+ * file alone uses belongs to that file's module, unless that file only wires
+ * others together: an entry point, or a folder's interface or root (index,
+ * mod.rs, lib.rs, main, __init__.py). Inside a feature's folder, files serving
+ * one another are already together. */
+function soleSiblingUser(repo: Repo, target: string, users: string[], edges: Edge[]): string | undefined {
+  if (users.length !== 1 || source.lang(target) === undefined || !rootFolders(repo).has(paths.dir(target))) return undefined;
+  const [user] = users;
+  if (source.generated(user, repo.read(user))) return undefined;
+  if (paths.dir(user) !== paths.dir(target) || source.lang(user) === undefined) return undefined;
+  if (/^(index\.[a-z]+|mod\.rs|lib\.rs|main\.[a-z]+|__init__\.py)$/.test(paths.name(user))) return undefined;
+  if (isEntry(repo, user, edges.filter((e) => e.to === user))) return undefined;
+  return user;
+}

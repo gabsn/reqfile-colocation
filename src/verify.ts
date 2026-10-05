@@ -7,9 +7,10 @@ import type { Analysis, Edge, Unverifiable } from "./graph";
 import * as paths from "./paths";
 import type { Config, Repo } from "./repo";
 import { type Command, named, runBlocks } from "./references";
+import { homesOfTests, manifestOf, orRoot, relativeTo, toolRequired } from "./places";
 import * as source from "./source";
 
-export type Rule = "interface" | "owner" | "tests" | "entry" | "roots";
+export type Rule = "interface" | "tests" | "entry" | "split" | "roots" | "owner";
 
 export type Violation = { path: string; line?: number; rule: Rule; message: string };
 
@@ -23,14 +24,26 @@ export type Verdict = {
 };
 
 /** Lines of shell a workflow step may hold before it is a feature's logic. */
-const ENTRY_LINES = 5;
+const ENTRY_LINES = 8;
+
+/** Above this many sibling folders holding the same child name, the name is
+ * a layer repeated in every feature, not a feature spread over tiers. */
+const LAYER_SPREAD = 3;
+
+/** Folder names that structure a package rather than name a feature: the
+ * same name on both sides of a dependency says nothing about a split. */
+const STRUCTURAL = new Set([
+  "src", "lib", "source", "sources", "app", "apps", "packages", "pkg", "internal", "test", "tests", "__tests__", "spec",
+  "dist", "build", "out", "bin", "scripts", "docs", "assets", "static", "public", "private", "common", "shared",
+  "utils", "util", "helpers", "types", "generated", "__generated__", "node_modules", "vendor", "examples",
+]);
 
 export function verify(repo: Repo, analysis: Analysis): Verdict {
   const { edges } = analysis;
   const violations: Violation[] = [
     ...interfaceRule(repo, edges),
-    ...ownerRule(repo, edges),
     ...testsRule(repo, edges),
+    ...splitRule(repo, edges),
     ...entryRule(repo),
     ...rootsRule(repo, edges, repo.config),
   ];
@@ -65,7 +78,12 @@ export function verify(repo: Repo, analysis: Analysis): Verdict {
  * they live, not by what they import. */
 function interfaceRule(repo: Repo, edges: Edge[]): Violation[] {
   return edges
-    .filter((e) => e.bypass && !source.isTest(e.from) && !source.consumer(e.from))
+    .filter(
+      (e) =>
+        e.bypass &&
+        !source.consumer(e.from) &&
+        !packageInternal(repo, e.from, e.bypass.boundary),
+    )
     .map((e) => ({
       path: e.from,
       line: e.line,
@@ -74,93 +92,75 @@ function interfaceRule(repo: Repo, edges: Edge[]): Violation[] {
     }));
 }
 
-/** Where a dependency's user is: the folder of the file that imports or names
- * it; for a path written in a repository-level file (CI, task file), the
- * folder of the other paths the same command names, or nowhere. */
-function userFolder(e: Edge, repo: Repo): string | null {
-  if (!source.consumer(e.from)) return paths.dir(e.from);
-  const work = (e.via ?? []).filter((v) => !source.consumer(v));
-  if (work.length === 0) return null;
-  return paths.commonFolder(work.map((v) => (repo.folders.has(v) ? v : paths.dir(v))));
+
+
+
+/** A package's root interface (index at its root or its src/) is for other
+ * packages: the package's own files reach their siblings directly. */
+function packageInternal(repo: Repo, importer: string, boundary: string): boolean {
+  const pkg = manifestOf(repo, boundary) ? boundary : paths.name(boundary) === "src" && manifestOf(repo, paths.dir(boundary)) ? paths.dir(boundary) : undefined;
+  return pkg !== undefined && paths.within(importer, pkg);
 }
 
-/** owner: what only one folder uses lives in it. A package (a folder with
- * its manifest) used only from one folder lives beside it, in its parent:
- * the evals of a product sit next to the product, not around it. */
-function ownerRule(repo: Repo, edges: Edge[]): Violation[] {
-  const targets = new Set(edges.map((e) => e.to));
-  const testHomes = homesOfTests(repo, edges);
+/** split: one feature in two tier or visibility folders. Under one parent,
+ * a dependency from A/N to B/N (the same feature in two tiers, such as
+ * app/garden and infra/garden), or from N/ to A/N (a feature depending on its
+ * own part kept elsewhere, such as widget/evals on oss/widget), puts N's code
+ * in two places: deleting N means deleting both. From A/N to N/ is a
+ * feature's part using a shared module named like it (user/graphql-api on
+ * graphql-api), not a split. Structural names (src, lib, tests...) are not
+ * feature names, nor is a name repeated under more than LAYER_SPREAD of the
+ * parent's folders: that is a layer every feature has (user/graphql-api,
+ * garden/graphql-api...), while a feature spans a few tiers (app, infra, cli). */
+function splitRule(repo: Repo, edges: Edge[]): Violation[] {
   const out: Violation[] = [];
-  for (const target of [...targets].sort()) {
-    if (source.consumer(target) || source.isTest(target) || isCrateRoot(repo, target) || toolRequired(repo, target)) continue;
-    if (repo.files.has(target) && source.generated(target, source.lang(target) ? repo.read(target) : "")) continue;
-    const folder = repo.folders.has(target) && !repo.files.has(target);
-    // A plain folder named in a command is no unit of ownership; a package is.
-    if (folder && !manifestOf(repo, target)) continue;
-    const outside = edges.filter((e) =>
-      folder ? paths.within(e.to, target) && !paths.within(e.from, target) : e.to === target && e.from !== target,
-    );
-    const production = outside.filter((e) => !source.isTest(e.from));
-    const homes = production.map((e) => userFolder(e, repo)).filter((h): h is string => h !== null);
-    let home: string;
-    let users: string[];
-    if (homes.length > 0) {
-      home = paths.commonFolder(homes);
-      users = [...new Set(production.filter((e) => userFolder(e, repo) !== null).map((e) => e.from))];
-    } else {
-      // Test support (fixtures) follows its tests, when tests import it: a
-      // path a test names says little, as code may reach the file unseen.
-      const tests = [...new Set(outside.filter((e) => source.isTest(e.from) && e.kind === "import").map((e) => e.from))];
-      if (tests.length === 0 || production.length > 0) continue;
-      home = paths.commonFolder(tests.map((t) => testHomes.get(t) ?? paths.dir(t)));
-      users = tests;
+  const spread = new Map<string, number>();
+  for (const folder of repo.folders) {
+    if (folder === "") continue;
+    const parent = paths.dir(paths.dir(folder));
+    const key = `${parent}\0${paths.name(folder)}`;
+    spread.set(key, (spread.get(key) ?? 0) + 1);
+  }
+  for (const e of edges) {
+    if (source.consumer(e.from) || source.isTest(e.from) || source.generated(e.from, source.lang(e.from) ? repo.read(e.from) : "")) continue;
+    const toFolder = repo.folders.has(e.to) && !repo.files.has(e.to) ? e.to : paths.dir(e.to);
+    const common = paths.commonFolder([paths.dir(e.from), toFolder]);
+    const below = (folder: string) => (common === "" ? folder : folder.slice(common.length + 1)).split("/").filter((p) => p !== "");
+    const fs = below(paths.dir(e.from));
+    const ts = below(toFolder);
+    if (fs.length === 0 || ts.length === 0) continue;
+    const pairs: [number, number][] = [[1, 1], [0, 1]];
+    for (const [i, j] of pairs) {
+      const name = fs[i];
+      if (name === undefined || name !== ts[j] || STRUCTURAL.has(name.toLowerCase())) continue;
+      // How many folders of the parent of the tiers hold a child of this name.
+      if ((spread.get(`${common}\0${name}`) ?? 0) > LAYER_SPREAD) continue;
+      const a = paths.join(common, fs.slice(0, i + 1).join("/"));
+      const b = paths.join(common, ts.slice(0, j + 1).join("/"));
+      // A package (a folder with its manifest) other features use too is a
+      // shared tool, not half of this feature; N's own parts in other tiers
+      // do not count. A plain folder used by other features stays a part.
+      const partOfN = (f: string) => {
+        const rest = below(paths.dir(f));
+        return rest[0] === name || rest[1] === name;
+      };
+      const others = manifestOf(repo, b) !== undefined && edges.some(
+        (o) =>
+          paths.within(o.to, b) &&
+          !paths.within(o.from, b) &&
+          paths.within(o.from, common) &&
+          !partOfN(o.from) &&
+          !source.consumer(o.from) &&
+          !source.isTest(o.from),
+      );
+      if (others) continue;
+      const target = repo.files.has(e.to) ? e.to : (manifestOf(repo, e.to) ?? e.to);
+      const message = `feature \`${name}\` is split between ${a}/ and ${b}/: ${a}/ depends on ${b}/; put it in one ${name}/ folder`;
+      out.push({ path: e.from, line: e.line, rule: "split", message }, { path: target, rule: "split", message });
+      break;
     }
-    const only = folder || homes.length === 0 ? undefined : soleSiblingUser(repo, target, users, edges);
-    if (only) {
-      out.push({
-        path: target,
-        rule: "owner",
-        message: `only ${paths.name(only)} uses ${paths.name(target)}: make it part of ${paths.name(only)}'s module (in the file, or a folder of its own)`,
-      });
-      continue;
-    }
-    const pkg = folder && [...repo.files].some((f) => source.manifest(f) && paths.dir(f) === target);
-    const place = pkg ? paths.dir(home) : home;
-    if (paths.within(target, place)) continue;
-    const where = folder ? `${target}/` : target;
-    const location = folder ? (manifestOf(repo, target) ?? target) : target;
-    out.push({
-      path: location,
-      rule: "owner",
-      message: `${where} is used only from ${orRoot(home)}/ (${users.map((u) => relativeTo(home, u)).join(", ")}); move it ${pkg ? "beside" : "into"} ${orRoot(pkg ? place : home)}/`,
-    });
   }
   return out;
-}
-
-/** For each test, the folder of the code it tests: the common folder of its
- * subjects, or of their package when it tests only entry points, a whole
- * program run end to end. */
-function homesOfTests(repo: Repo, edges: Edge[]): Map<string, string> {
-  const importers = new Map<string, Edge[]>();
-  for (const e of edges) importers.set(e.to, [...(importers.get(e.to) ?? []), e]);
-  const homes = new Map<string, string>();
-  const tests = new Set(edges.map((e) => e.from).filter((f) => source.isTest(f) && source.lang(f) !== undefined));
-  for (const test of tests) {
-    const imported = [
-      ...new Set(edges.filter((e) => e.from === test && !source.isTest(e.to) && repo.files.has(e.to) && source.lang(e.to) !== undefined).map((e) => e.to)),
-    ];
-    // Its subject: the file it is named after, else the code it imports that
-    // is not test support (fixtures only tests use), else whatever it imports.
-    const named = imported.filter((f) => source.stem(f) === source.stem(test));
-    const support = (f: string) => (importers.get(f) ?? []).every((e) => source.isTest(e.from));
-    const production = imported.filter((f) => !support(f));
-    const subjects = named.length > 0 ? named : production.length > 0 ? production : imported;
-    if (subjects.length === 0) continue;
-    const whole = subjects.every((s) => isEntry(repo, s, importers.get(s) ?? []));
-    homes.set(test, whole ? packageOf(repo, subjects[0]) : paths.commonFolder(subjects.map(paths.dir)));
-  }
-  return homes;
 }
 
 /** tests: a test lives in the folder of the code it tests, unless a tool
@@ -235,72 +235,12 @@ function declaredButMissing(repo: Repo, config: Config): Unverifiable[] {
   return out;
 }
 
-/** A program something runs: a Rust binary root, a Python __main__ module or
- * script with a main guard, a file with a shebang, or one a manifest, task or
- * workflow command runs. */
-function isEntry(repo: Repo, file: string, importers: Edge[]): boolean {
-  if (/(^|\/)src\/(main\.rs|bin\/)|(^|\/)build\.rs$/.test(file) || paths.name(file) === "__main__.py") return true;
-  if (importers.some((e) => e.kind === "path" && (source.consumer(e.from) || source.lang(e.from) === undefined))) return true;
-  if (source.lang(file) === undefined) return false;
-  const text = repo.read(file);
-  return text.startsWith("#!") || (file.endsWith(".py") && /^if __name__ == ["']__main__["']\s*:/m.test(text));
-}
 
-/** At a root, where each file is a feature of its own (a package or crate
- * root, its src/, a root declared in colocation.yaml), a module that one other
- * file alone uses belongs to that file's module, unless that file only wires
- * others together: an entry point, or a folder's interface or root (index,
- * mod.rs, lib.rs, main, __init__.py). Inside a feature's folder, files serving
- * one another are already together. */
-function soleSiblingUser(repo: Repo, target: string, users: string[], edges: Edge[]): string | undefined {
-  if (users.length !== 1 || source.lang(target) === undefined || !rootFolders(repo).has(paths.dir(target))) return undefined;
-  const [user] = users;
-  if (source.generated(user, repo.read(user))) return undefined;
-  if (paths.dir(user) !== paths.dir(target) || source.lang(user) === undefined) return undefined;
-  if (/^(index\.[a-z]+|mod\.rs|lib\.rs|main\.[a-z]+|__init__\.py)$/.test(paths.name(user))) return undefined;
-  if (isEntry(repo, user, edges.filter((e) => e.to === user))) return undefined;
-  return user;
-}
 
-function rootFolders(repo: Repo): Set<string> {
-  const roots = new Set(["", ...repo.config.roots.map((r) => r.path)]);
-  for (const file of repo.files) {
-    if (!source.manifest(file)) continue;
-    roots.add(paths.dir(file));
-    roots.add(paths.join(paths.dir(file), "src"));
-  }
-  return roots;
-}
 
-/** Places a tool or convention fixes: migrations, Rust tests/, benches/,
- * examples/ next to Cargo.toml, agent configuration, and the documents a
- * folder keeps about itself. */
-function toolRequired(repo: Repo, path: string): boolean {
-  const parts = path.split("/");
-  if (/^\.(agents|claude|codex|cursor|github)\//.test(path)) return true;
-  if (/^(AGENTS|CLAUDE|README|LICENSE|CHANGELOG|CONTRIBUTING)(\..*)?$/i.test(paths.name(path))) return true;
-  return parts.some(
-    (part, i) =>
-      part === "migrations" ||
-      (["tests", "benches", "examples"].includes(part) && repo.files.has(paths.join(parts.slice(0, i).join("/"), "Cargo.toml"))),
-  );
-}
 
-function isCrateRoot(repo: Repo, path: string): boolean {
-  const m = path.match(/^(.*?)\/?src\/(lib|main)\.rs$/);
-  return m !== null && repo.files.has(paths.join(m[1], "Cargo.toml"));
-}
 
-function packageOf(repo: Repo, file: string): string {
-  for (let dir = paths.dir(file); ; dir = paths.dir(dir)) {
-    if ([...repo.files].some((f) => source.manifest(f) && paths.dir(f) === dir)) return dir;
-    if (dir === "") return "";
-  }
-}
 
-function manifestOf(repo: Repo, folder: string): string | undefined {
-  return [...repo.files].find((f) => source.manifest(f) && paths.dir(f) === folder);
-}
 
 function glob(pattern: string): RegExp {
   const re = pattern
@@ -319,10 +259,4 @@ function dedupe(violations: Violation[]): Violation[] {
   return [...seen.values()];
 }
 
-function relativeTo(folder: string, path: string): string {
-  return folder !== "" && path.startsWith(`${folder}/`) ? path.slice(folder.length + 1) : path;
-}
 
-function orRoot(folder: string): string {
-  return folder === "" ? "." : folder;
-}
