@@ -6,7 +6,12 @@
     "strict": true,
     "noEmit": true,
     "resolveJsonModule": true,
-    "types": ["bun"]
+    "types": [
+      "bun"
+    ],
+    "skipLibCheck": true
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }
