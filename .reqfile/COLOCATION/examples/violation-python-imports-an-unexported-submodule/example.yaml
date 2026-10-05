@@ -1,0 +1,5 @@
+expected: violation
+findings:
+  - app/quote.py
+rationale: "The same program as ok-python-imports-a-reexported-submodule, but billing's interface exports only total: `from billing import tax` still works in Python, as a submodule import, and reaches an implementation billing does not offer."
+origin: authored

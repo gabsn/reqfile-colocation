@@ -1,0 +1,7 @@
+expected: violation
+findings:
+  - tests/polygon.rs
+  - tests/fixtures/field.wkt
+rationale: "Hard: idiomatic Rust, but tests/ is a tool-required location that must stay a thin entry point; here it holds the polygon feature's whole test suite and a fixture only polygon uses, so deleting src/polygon.rs leaves them behind."
+origin: authored
+split: holdout

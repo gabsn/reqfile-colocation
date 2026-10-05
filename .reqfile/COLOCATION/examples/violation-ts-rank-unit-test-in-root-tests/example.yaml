@@ -1,0 +1,7 @@
+expected: violation
+findings:
+  - tests/rank.test.ts
+  - tests/fixtures/docs.json
+rationale: "Hard: the root tests/ folder also holds a legitimate CLI end-to-end test, but the rank unit test and its fixture are used only by the search feature and sit outside src/search/ (tests and fixtures included), reaching into search's internal rank.ts."
+origin: authored
+split: holdout

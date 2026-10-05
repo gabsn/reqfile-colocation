@@ -3,4 +3,3 @@ findings:
   - test/unit/checkout/discount.test.ts
 rationale: "shipping.test.ts sits next to its module, but discount.test.ts lives in a mirror tree under test/unit/."
 origin: authored
-split: holdout

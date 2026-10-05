@@ -1,0 +1,4 @@
+expected: ok
+rationale: "Business-day rules are used by both invoicing and payroll, so they are a module of their own (crewdesk/business_days.py) beside the two features, each of which keeps its own tests inside its folder."
+origin: authored
+split: holdout

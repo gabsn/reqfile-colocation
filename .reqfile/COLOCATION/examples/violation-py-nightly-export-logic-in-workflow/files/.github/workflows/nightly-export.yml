@@ -1,0 +1,36 @@
+name: Nightly low-stock export
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - name: Write low-stock.csv
+        env:
+          THRESHOLD: "5"
+        run: |
+          python - > low-stock.csv <<'PY'
+          import csv
+          import os
+          import sys
+
+          from stocklog.inventory import load_items
+
+          threshold = int(os.environ["THRESHOLD"])
+          writer = csv.writer(sys.stdout)
+          writer.writerow(["sku", "name", "quantity"])
+          for item in sorted(load_items(), key=lambda i: i["quantity"]):
+              if item["quantity"] < threshold:
+                  writer.writerow([item["sku"], item["name"], item["quantity"]])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: low-stock
+          path: low-stock.csv

@@ -1,0 +1,6 @@
+expected: violation
+findings:
+  - crewdesk/invoicing/business_days.py
+rationale: "Hard: payroll imports is_business_day through invoicing's __init__.py, which re-exports it, so nothing bypasses an interface; but a domain used by two features must be a separate module beside them, and here it lives inside invoicing, so invoicing cannot be deleted without breaking payroll."
+origin: authored
+split: holdout

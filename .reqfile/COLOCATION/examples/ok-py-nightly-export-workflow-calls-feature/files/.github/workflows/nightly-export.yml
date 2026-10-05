@@ -1,0 +1,19 @@
+name: Nightly low-stock export
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - run: python -m stocklog.export --threshold 5 > low-stock.csv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: low-stock
+          path: low-stock.csv
