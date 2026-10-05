@@ -18,21 +18,21 @@ src/                              # the checker, in TypeScript, published to npm
 Try it, then adopt it (reqfile 0.3 or later, with [Bun](https://bun.sh) installed):
 
 ```sh
-reqfile eval --use gabsn/reqfile-colocation@v0.1.2    # its score on its examples
-reqfile check --use gabsn/reqfile-colocation@v0.1.2   # its findings on your code
-reqfile add gabsn/reqfile-colocation@v0.1.2           # writes the line below
+reqfile eval --use gabsn/reqfile-colocation@v0.2.0    # its score on its examples
+reqfile check --use gabsn/reqfile-colocation@v0.2.0   # its findings on your code
+reqfile add gabsn/reqfile-colocation@v0.2.0           # writes the line below
 ```
 
 which writes:
 
 ```yaml
 code:
-  - { id: COLOCATION, use: gabsn/reqfile-colocation@<commit> }  # v0.1.2
+  - { id: COLOCATION, use: gabsn/reqfile-colocation@<commit> }  # v0.2.0
 ```
 
-The check runs `bunx @g48in/reqfile-colocation@0.1.3`: Bun fetches the checker from
+The check runs `bunx @g48in/reqfile-colocation@0.2.0`: Bun fetches the checker from
 npm once and caches it, nothing to install. With Node only, replace the check
-in your use block with `run: npx -y @g48in/reqfile-colocation@0.1.3`.
+in your use block with `run: npx -y @g48in/reqfile-colocation@0.2.0`.
 
 ## The checker
 

@@ -219,6 +219,8 @@ function words(name: string): string[] {
  * exports items of its own, rather than only listing submodules. */
 function interfaces(files: Set<string>, sources: Map<string, string>): Map<string, string> {
   const found = new Map<string, string>();
+  const folders = new Set<string>();
+  for (const file of files) for (let d = paths.dir(file); d !== "" && !folders.has(d); d = paths.dir(d)) folders.add(d);
   for (const [path, text] of sources) {
     const name = paths.name(path);
     let folder: string | undefined;
@@ -228,7 +230,7 @@ function interfaces(files: Set<string>, sources: Map<string, string>): Map<strin
       if (name === "mod.rs") folder = paths.dir(path);
       else {
         const named = paths.join(paths.dir(path), name.slice(0, -3));
-        if ([...files].some((f) => f.startsWith(`${named}/`))) folder = named;
+        if (folders.has(named)) folder = named;
       }
     }
     if (folder !== undefined && folder !== "") found.set(folder, path);
