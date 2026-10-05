@@ -79,3 +79,27 @@ test("a workflow step holding a feature's logic inline is flagged; a call into i
   expect(judged(thick)).toEqual([".github/workflows/e.yml"]);
   expect(judged(thin)).toEqual([]);
 });
+
+test("files of one feature loose among others at a root are flagged; a module every feature uses is not", () => {
+  const sources = { "Cargo.toml": "", "src/main.rs": "", "src/add.rs": "", "src/update.rs": "", "src/sources.rs": "", "src/check.rs": "", "src/format.rs": "" };
+  const edges: Edge[] = [
+    ...["add", "update", "check"].map((f) => ({ from: "src/main.rs", to: `src/${f}.rs`, items: ["run"] })),
+    ...["add", "update"].map((f) => ({ from: `src/${f}.rs`, to: "src/sources.rs", items: ["latest"] })),
+    ...["add", "update", "check"].map((f) => ({ from: `src/${f}.rs`, to: "src/format.rs", items: ["parse"] })),
+  ];
+  expect(flagged(sources, edges, [""]).map((f) => f.split(":")[0])).toEqual(["src/add.rs", "src/sources.rs", "src/update.rs"]);
+});
+
+test("generated code and a nested module's own interface are not reaches past an interface", () => {
+  const sources = {
+    "src/sdk/__generated__/index.ts": "export * from './graphql';\n", "src/sdk/__generated__/graphql.ts": "",
+    "src/telemetry/index.ts": "export { log } from './logger';\n", "src/telemetry/logger/index.ts": "export const log = 1;\n",
+    "src/app/coin.ts": "", "src/routeTree.gen.ts": "", "src/routes/index.tsx": "export const r = 1;\n", "src/routes/about.tsx": "",
+  };
+  const edges: Edge[] = [
+    { from: "src/app/coin.ts", to: "src/sdk/__generated__/graphql.ts", items: ["Query"] },
+    { from: "src/app/coin.ts", to: "src/telemetry/logger/index.ts", items: ["log"] },
+    { from: "src/routeTree.gen.ts", to: "src/routes/about.tsx", items: ["Route"] },
+  ];
+  expect(flagged(sources, edges).filter((f) => f.includes("past its interface"))).toEqual([]);
+});

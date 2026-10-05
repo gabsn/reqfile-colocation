@@ -14,6 +14,7 @@ const GRAB_BAG = 0.75;
 const ITEM_AWAY = 0.75;
 const PAST_INTERFACE = 0.8;
 const THICK_ENTRY = 0.8;
+const LOOSE_FEATURE = 0.75;
 /** Lines of shell a workflow step may hold before it is a feature's logic. */
 const ENTRY_LINES = 5;
 const PLACED = 0.1;
@@ -55,6 +56,7 @@ export function judge(
 
   const roots = rootFolders(files);
   const interfaceOf = interfaces(files, sources);
+  const interfaceFiles = new Set(interfaceOf.values());
   const users = new Map<string, Edge[]>();
   for (const edge of edges) users.set(edge.to, [...(users.get(edge.to) ?? []), edge]);
   for (const [target, targetEdges] of users) {
@@ -71,9 +73,7 @@ export function judge(
       add(target, MISPLACED, `used only from ${orRoot(home)}/ (${placing.map((u) => relativeTo(home, u)).join(", ")})`);
     }
     const text = sources.get(target) ?? "";
-    // An interface faces its module's users: each item may serve one of them.
-    const facesUsers = misplaced || [...interfaceOf.values()].includes(target);
-    for (const [items, folder] of facesUsers ? [] : itemsAway(target, targetEdges, text)) {
+    for (const [items, folder] of misplaced ? [] : itemsBelow(target, targetEdges.filter((e) => !source.isTest(e.from)), text)) {
       add(target, ITEM_AWAY, `${items.join(", ")} serve${items.length === 1 ? "s" : ""} only ${folder}/`);
     }
     // Inside a module, how its files group its items is free; at a root,
@@ -84,12 +84,17 @@ export function judge(
   }
 
   for (const edge of edges) {
-    if (source.isTest(edge.from)) continue;
-    const reached = pastInterface(edge, interfaceOf, sources);
+    if (source.isTest(edge.from) || [edge.from, edge.to].some((f) => generated(f, sources.get(f) ?? ""))) continue;
+    const reached = pastInterface(edge, interfaceOf, interfaceFiles, sources);
     if (!reached) continue;
     const [folder, entry] = reached;
     judged.add(edge.from);
     add(edge.from, PAST_INTERFACE, `reaches into ${folder}/ past its interface ${paths.name(entry)} (imports ${relativeTo(folder, edge.to)})`);
+  }
+
+  for (const [path, message] of looseFeatures(roots, sources, edges)) {
+    judged.add(path);
+    add(path, LOOSE_FEATURE, message);
   }
 
   for (const [path, message] of thickEntryPoints(workflows, files)) {
@@ -235,9 +240,9 @@ function words(name: string): string[] {
     .map(singular);
 }
 
-/** The interface file of each folder that declares one: an index.ts,
- * __init__.py or mod.rs (or the Rust file named after the folder) that
- * exports items of its own, rather than only listing submodules. */
+/** The interface file of each folder that declares one: an index.ts or mod.rs
+ * (or the Rust file named after the folder) that exports items of its own,
+ * rather than only listing submodules, or an __init__.py defining __all__. */
 function interfaces(files: Set<string>, sources: Map<string, string>): Map<string, string> {
   const found = new Map<string, string>();
   const folders = new Set<string>();
@@ -246,7 +251,9 @@ function interfaces(files: Set<string>, sources: Map<string, string>): Map<strin
     const name = paths.name(path);
     let folder: string | undefined;
     if (/^index\.(ts|tsx|js|jsx|mjs)$/.test(name) && /^\s*export\b/m.test(text)) folder = paths.dir(path);
-    else if (name === "__init__.py" && /^(def|class|from|import|[A-Za-z_]\w*\s*=)/m.test(text)) folder = paths.dir(path);
+    // Python's submodules are public by convention; a package declares an
+    // interface with __all__.
+    else if (name === "__init__.py" && /^__all__\s*[:=]/m.test(text)) folder = paths.dir(path);
     else if (name.endsWith(".rs") && /^\s*pub(\([^)]*\))?\s+(use|fn|struct|enum|trait|type|const|static)\b/m.test(text)) {
       if (name === "mod.rs") folder = paths.dir(path);
       else {
@@ -263,7 +270,12 @@ function interfaces(files: Set<string>, sources: Map<string, string>): Map<strin
  * that folder's interface: the folder and its interface. A Rust path cannot
  * reach a private submodule (`mod add;`), so a path naming one, such as
  * `pins::add` for an item re-exported under that name, is not counted. */
-function pastInterface(edge: Edge, interfaceOf: Map<string, string>, sources: Map<string, string>): [string, string] | null {
+function pastInterface(
+  edge: Edge,
+  interfaceOf: Map<string, string>,
+  interfaceFiles: Set<string>,
+  sources: Map<string, string>,
+): [string, string] | null {
   const common = paths.commonFolder([paths.dir(edge.from), paths.dir(edge.to)]);
   const inner = paths.dir(edge.to).split("/").slice(common === "" ? 0 : common.split("/").length);
   let folder = common;
@@ -271,7 +283,9 @@ function pastInterface(edge: Edge, interfaceOf: Map<string, string>, sources: Ma
     folder = paths.join(folder, part);
     const entry = interfaceOf.get(folder);
     if (entry === undefined) continue;
-    if (entry === edge.to || privateRustModule(entry, folder, edge.to, sources)) return null;
+    // A nested module's own interface, such as a subpackage, is public too.
+    if (entry === edge.to || interfaceFiles.has(edge.to)) return null;
+    if (privateRustModule(entry, folder, edge.to, sources)) return null;
     return [folder, entry];
   }
   return null;
@@ -300,10 +314,11 @@ function rootFolders(files: Set<string>): Set<string> {
 }
 
 /** Items of a file, grouped with the items their top-level block names, whose
- * users all live in a folder that does not contain the file: each group and
- * that folder. */
-function itemsAway(target: string, edges: Edge[], text: string): [string[], string][] {
-  if (edges.some((e) => e.items.length === 0)) return [];
+ * production users all live in one folder below the file's: each group and
+ * that folder. An item used from elsewhere may be what its module offers; one
+ * used only below belongs down there. */
+function itemsBelow(target: string, edges: Edge[], text: string): [string[], string][] {
+  if (edges.length === 0 || edges.some((e) => e.items.length === 0)) return [];
   const items = [...new Set(edges.flatMap((e) => e.items))];
   let groups: Set<string>[] = items.map((item) => new Set([item]));
   for (const block of blocks(text)) {
@@ -322,7 +337,7 @@ function itemsAway(target: string, edges: Edge[], text: string): [string[], stri
   for (const group of groups) {
     const users = edges.filter((e) => e.items.some((item) => group.has(item))).map((e) => paths.dir(e.from));
     const folder = paths.commonFolder(users);
-    if (!paths.within(home, folder)) away.push([[...group].sort(), orRoot(folder)]);
+    if (folder !== home && paths.within(folder, home)) away.push([[...group].sort(), folder]);
   }
   return away;
 }
@@ -366,4 +381,36 @@ function runBlocks(text: string): string[] {
     blocks.push(body.join("\n"));
   });
   return blocks;
+}
+
+/** At a root, where each file is a feature: files no sibling uses are
+ * entries, files only entries use are features, and a helper several
+ * features use, but not all of them, makes those features and itself one
+ * feature with no folder of its own. Each of its files, with that feature. */
+function looseFeatures(roots: Set<string>, sources: Map<string, string>, edges: Edge[]): [string, string][] {
+  const found: [string, string][] = [];
+  for (const root of roots) {
+    const siblings = [...sources.keys()].filter((f) => paths.dir(f) === root && !source.isTest(f) && source.lang(f) !== "style");
+    const usersOf = (file: string) => [...new Set(edges.filter((e) => e.to === file && !source.isTest(e.from)).map((e) => e.from))];
+    const entries = new Set(siblings.filter((f) => usersOf(f).length === 0));
+    const features = new Set(siblings.filter((f) => !entries.has(f) && usersOf(f).every((u) => entries.has(u))));
+    for (const helper of siblings.filter((f) => !entries.has(f) && !features.has(f))) {
+      const users = usersOf(helper);
+      if (users.length < 2 || users.length >= features.size || !users.every((u) => features.has(u))) continue;
+      const group = [...users, helper].sort();
+      const message = `${group.map(paths.name).join(", ")} form one feature loose in ${orRoot(root)}/; give it a folder of its own`;
+      for (const file of group) found.push([file, message]);
+    }
+  }
+  return found;
+}
+
+/** Code a tool writes, such as TanStack Router's routeTree.gen.ts or a
+ * __generated__/ SDK: its layout is the tool's, not a design choice. */
+function generated(path: string, text: string): boolean {
+  return (
+    /\.(gen|generated)\.[a-z]+$/.test(paths.name(path)) ||
+    /(^|\/)(__generated__|generated)\//.test(path) ||
+    /@generated|auto-?generated|do not edit/i.test(text.slice(0, 400))
+  );
 }

@@ -49,9 +49,10 @@ It resolves imports of TS/JS (with tsconfig path aliases), Python and Rust into 
 | a file used only from one folder, living outside it | 0.9 |
 | a test living outside the folder of the code it tests | 0.85 |
 | one feature split across sibling layer folders (models/, services/…) | 0.85 |
-| an import that enters a folder past its interface (index.ts, __init__.py, mod.rs exporting items) | 0.8 |
+| an import that enters a folder past its interface (index.ts or mod.rs exporting items, __init__.py defining __all__), unless it targets generated code or a nested interface | 0.8 |
 | an item, or the items one block names, whose users all live in a folder without its file (not in an interface) | 0.75 |
 | at a root, a file whose items serve disjoint sets of users | 0.75 |
+| at a root, a helper used by several of its features but not all: those files form one feature with no folder | 0.75 |
 | a workflow step running 5 or more lines of shell on a top-level folder's files, instead of calling a script there | 0.8 |
 
 A probability above 0.7 is a violation (`thresholds` in Reqfile.yaml); files

@@ -1,0 +1,3 @@
+expected: ok
+rationale: "Reconstructed from false alarms on a real repository: server.py imports voice.models.loaders, a submodule of a package whose __init__.py re-exports a few names for convenience. In Python submodules are public unless named with a leading underscore, and a package declares a narrower interface with __all__; this one declares none."
+origin: authored
