@@ -50,3 +50,19 @@ test("a Rust path naming a private submodule is a re-exported item, not a reach 
   ];
   expect(flagged(sources, edges, [""]).filter((f) => f.includes("past its interface"))).toEqual([]);
 });
+
+test("an item whose users all live elsewhere is flagged; inside a module, grouping is free", () => {
+  const money = "export function formatMoney(c: number): string { return `${c}`; }\n\nexport function invoiceTotal(l: number[]): number { return l.length; }\n";
+  const types = "export type Address = { city: string };\n\nexport type PaymentMethod = { kind: string };\n";
+  const sources = {
+    "package.json": "{}", "src/money.ts": money, "src/billing/invoice.ts": "", "src/cart/summary.ts": "",
+    "src/checkout/types.ts": types, "src/checkout/payment.ts": "", "src/checkout/shipping.ts": "",
+  };
+  const edges: Edge[] = [
+    { from: "src/billing/invoice.ts", to: "src/money.ts", items: ["formatMoney", "invoiceTotal"] },
+    { from: "src/cart/summary.ts", to: "src/money.ts", items: ["formatMoney"] },
+    { from: "src/checkout/payment.ts", to: "src/checkout/types.ts", items: ["PaymentMethod"] },
+    { from: "src/checkout/shipping.ts", to: "src/checkout/types.ts", items: ["Address"] },
+  ];
+  expect(flagged(sources, edges)).toEqual(["src/money.ts: invoiceTotal serves only src/billing/"]);
+});

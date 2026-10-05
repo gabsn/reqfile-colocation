@@ -1,4 +1,3 @@
 expected: ok
 rationale: "Hard: types.ts holds items with disjoint users, the shape of a grab bag, but every user is in checkout/: grouping inside a module is free, and deleting checkout deletes it too."
 origin: authored
-known: false_alarm

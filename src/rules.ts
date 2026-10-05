@@ -11,6 +11,7 @@ const MISPLACED = 0.9;
 const TEST_AWAY = 0.85;
 const LAYERED = 0.85;
 const GRAB_BAG = 0.75;
+const ITEM_AWAY = 0.75;
 const PAST_INTERFACE = 0.8;
 const PLACED = 0.1;
 
@@ -48,6 +49,8 @@ export function judge(
     }
   }
 
+  const roots = rootFolders(files);
+  const interfaceOf = interfaces(files, sources);
   const users = new Map<string, Edge[]>();
   for (const edge of edges) users.set(edge.to, [...(users.get(edge.to) ?? []), edge]);
   for (const [target, targetEdges] of users) {
@@ -59,14 +62,23 @@ export function judge(
     else placing = targetEdges.map((e) => e.from);
     judged.add(target);
     const home = paths.commonFolder(placing.map(paths.dir));
-    if (!paths.within(paths.dir(target), home)) {
+    const misplaced = !paths.within(paths.dir(target), home);
+    if (misplaced) {
       add(target, MISPLACED, `used only from ${orRoot(home)}/ (${placing.map((u) => relativeTo(home, u)).join(", ")})`);
     }
-    const clusters = grabBag(targetEdges, sources.get(target) ?? "");
+    const text = sources.get(target) ?? "";
+    // An interface faces its module's users: each item may serve one of them.
+    const facesUsers = misplaced || [...interfaceOf.values()].includes(target);
+    for (const [items, folder] of facesUsers ? [] : itemsAway(target, targetEdges, text)) {
+      add(target, ITEM_AWAY, `${items.join(", ")} serve${items.length === 1 ? "s" : ""} only ${folder}/`);
+    }
+    // Inside a module, how its files group its items is free; at a root,
+    // each file is a feature of its own.
+    if (!roots.has(paths.dir(target))) continue;
+    const clusters = grabBag(targetEdges, text);
     if (clusters) add(target, GRAB_BAG, `holds items that serve separate users: ${clusters}`);
   }
 
-  const interfaceOf = interfaces(files, sources);
   for (const edge of edges) {
     if (source.isTest(edge.from)) continue;
     const reached = pastInterface(edge, interfaceOf, sources);
@@ -262,4 +274,46 @@ function privateRustModule(entry: string, folder: string, target: string, source
   const rest = target.slice(folder.length + 1);
   const name = rest.split("/")[0].replace(/\.rs$/, "");
   return new RegExp(`^\\s*mod\\s+${name}\\s*;`, "m").test(sources.get(entry) ?? "");
+}
+
+const MANIFESTS = new Set(["package.json", "Cargo.toml", "pyproject.toml", "setup.py"]);
+
+/** Folders where each file is a feature of its own: the repository root, each
+ * package or crate root, and its src/. */
+function rootFolders(files: Set<string>): Set<string> {
+  const roots = new Set([""]);
+  for (const file of files) {
+    if (!MANIFESTS.has(paths.name(file))) continue;
+    roots.add(paths.dir(file));
+    roots.add(paths.join(paths.dir(file), "src"));
+  }
+  return roots;
+}
+
+/** Items of a file, grouped with the items their top-level block names, whose
+ * users all live in a folder that does not contain the file: each group and
+ * that folder. */
+function itemsAway(target: string, edges: Edge[], text: string): [string[], string][] {
+  if (edges.some((e) => e.items.length === 0)) return [];
+  const items = [...new Set(edges.flatMap((e) => e.items))];
+  let groups: Set<string>[] = items.map((item) => new Set([item]));
+  for (const block of blocks(text)) {
+    const named = new Set(items.filter((item) => mentions(block, item)));
+    if (named.size < 2) continue;
+    const merged = new Set(named);
+    groups = groups.filter((g) => {
+      if (![...g].some((item) => named.has(item))) return true;
+      g.forEach((item) => merged.add(item));
+      return false;
+    });
+    groups.push(merged);
+  }
+  const home = paths.dir(target);
+  const away: [string[], string][] = [];
+  for (const group of groups) {
+    const users = edges.filter((e) => e.items.some((item) => group.has(item))).map((e) => paths.dir(e.from));
+    const folder = paths.commonFolder(users);
+    if (!paths.within(home, folder)) away.push([[...group].sort(), orRoot(folder)]);
+  }
+  return away;
 }
