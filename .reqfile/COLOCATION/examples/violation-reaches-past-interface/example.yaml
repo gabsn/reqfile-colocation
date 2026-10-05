@@ -1,0 +1,5 @@
+expected: violation
+findings:
+  - src/cart/checkout.ts
+rationale: "billing/ is a module with an interface, index.ts. checkout.ts imports billing/tax.ts directly, so billing is no longer a black box: its internals cannot change, move or be deleted without editing cart/."
+origin: authored

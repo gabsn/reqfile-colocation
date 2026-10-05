@@ -4,12 +4,12 @@ reqfile: 1
 code:
   - id: COLOCATION
     ref: Parnas, "On the Criteria To Be Used in Decomposing Systems into Modules"; Martin, Common Closure Principle; Gabriel, Patterns of Software (locality)
-    must: Code lives in the lowest folder that contains everything using it, tests included. Each module, type, function, constant, style, fixture or test used by one feature lives in that feature's folder, next to the code it serves; it moves up to a shared folder only once several features use it, so a shared file whose items each serve one feature is a violation. Folders group code by feature, not by technical layer. Locations a tool requires (Rust tests/, migrations, framework route folders) are allowed; a convention alone, such as a test/ tree mirroring src/, is not.
-    why: What changes together lives together, so a change touches one folder, a reader or agent finds all of a feature in one place, and deleting a feature leaves no orphans behind.
+    must: "Each feature or domain lives in one folder or file that can be deleted on its own: everything only it uses, tests and fixtures included, is inside, other code reaches it only through its interface, and code several features share is a module of its own beside them. Folders group code by feature, never by technical layer or by visibility, while inside a module any layering (pure domain, I/O, interfaces) is free; a location a tool requires holds only a thin entry point into the feature, and code that merely uses a feature elsewhere is not part of it."
+    why: What changes together lives together, so a change touches one folder, a reader or agent can use a feature without reading its implementation, and deleting a feature deletes one folder and leaves no orphans behind.
     who: Anyone adding a file; agents deciding where new code goes.
     checks:
       - command:
           run: bunx @g48in/reqfile-colocation@0.1.3   # fetched from npm and cached by bun; reads the whole repository, prints SARIF with a probability per file
           format: sarif
           thresholds: { violation_above: 0.7 }   # the heuristics report 0.75 to 0.9; measured on .reqfile/COLOCATION/examples
-          fix_hint: Move the file to the lowest folder that contains all of its users, or split a shared file by the features its items serve.
+          fix_hint: Group the file with the feature that uses it, inside that feature's module rather than a layer folder; split a shared file by the features its items serve; import a module through its interface.

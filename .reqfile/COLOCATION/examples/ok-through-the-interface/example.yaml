@@ -1,0 +1,3 @@
+expected: ok
+rationale: "cart/ uses billing only through billing/index.ts, which exports what other features need; tax.ts stays private to billing."
+origin: authored

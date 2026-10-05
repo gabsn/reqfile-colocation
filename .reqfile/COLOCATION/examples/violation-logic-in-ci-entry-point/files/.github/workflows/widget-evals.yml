@@ -1,0 +1,20 @@
+name: widget evals
+on: pull_request
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: |
+          python3 -m venv .venv
+          .venv/bin/pip install -r widget/evals/requirements.txt
+          base=$(git merge-base origin/main HEAD)
+          git worktree add /tmp/base "$base"
+          (cd /tmp/base && cargo build --release --manifest-path widget/Cargo.toml)
+          cargo build --release --manifest-path widget/Cargo.toml
+          for side in /tmp/base .; do
+            "$side/target/release/widget" --corpus widget/evals/corpus > "$side.json"
+          done
+          before=$(.venv/bin/python widget/evals/score.py /tmp/base.json)
+          after=$(.venv/bin/python widget/evals/score.py ./.json)
+          python3 -c "import sys; sys.exit(float('$after') < float('$before'))"

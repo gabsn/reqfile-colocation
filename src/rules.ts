@@ -11,6 +11,7 @@ const MISPLACED = 0.9;
 const TEST_AWAY = 0.85;
 const LAYERED = 0.85;
 const GRAB_BAG = 0.75;
+const PAST_INTERFACE = 0.8;
 const PLACED = 0.1;
 
 /** Folder names that group code by technical layer rather than by feature. */
@@ -63,6 +64,16 @@ export function judge(
     }
     const clusters = grabBag(targetEdges, sources.get(target) ?? "");
     if (clusters) add(target, GRAB_BAG, `holds items that serve separate users: ${clusters}`);
+  }
+
+  const interfaceOf = interfaces(files, sources);
+  for (const edge of edges) {
+    if (source.isTest(edge.from)) continue;
+    const reached = pastInterface(edge, interfaceOf);
+    if (!reached) continue;
+    const [folder, entry] = reached;
+    judged.add(edge.from);
+    add(edge.from, PAST_INTERFACE, `reaches into ${folder}/ past its interface ${paths.name(entry)} (imports ${relativeTo(folder, edge.to)})`);
   }
 
   for (const [path, message] of layered(files)) {
@@ -201,4 +212,40 @@ function words(name: string): string[] {
     .split(/[_\-]+/)
     .filter((w) => w !== "")
     .map(singular);
+}
+
+/** The interface file of each folder that declares one: an index.ts,
+ * __init__.py or mod.rs (or the Rust file named after the folder) that
+ * exports items of its own, rather than only listing submodules. */
+function interfaces(files: Set<string>, sources: Map<string, string>): Map<string, string> {
+  const found = new Map<string, string>();
+  for (const [path, text] of sources) {
+    const name = paths.name(path);
+    let folder: string | undefined;
+    if (/^index\.(ts|tsx|js|jsx|mjs)$/.test(name) && /^\s*export\b/m.test(text)) folder = paths.dir(path);
+    else if (name === "__init__.py" && /^(def|class|from|import|[A-Za-z_]\w*\s*=)/m.test(text)) folder = paths.dir(path);
+    else if (name.endsWith(".rs") && /^\s*pub(\([^)]*\))?\s+(use|fn|struct|enum|trait|type|const|static)\b/m.test(text)) {
+      if (name === "mod.rs") folder = paths.dir(path);
+      else {
+        const named = paths.join(paths.dir(path), name.slice(0, -3));
+        if ([...files].some((f) => f.startsWith(`${named}/`))) folder = named;
+      }
+    }
+    if (folder !== undefined && folder !== "") found.set(folder, path);
+  }
+  return found;
+}
+
+/** When `edge` enters a folder from outside and lands on a file other than
+ * that folder's interface: the folder and its interface. */
+function pastInterface(edge: Edge, interfaceOf: Map<string, string>): [string, string] | null {
+  const common = paths.commonFolder([paths.dir(edge.from), paths.dir(edge.to)]);
+  const inner = paths.dir(edge.to).split("/").slice(common === "" ? 0 : common.split("/").length);
+  let folder = common;
+  for (const part of inner) {
+    folder = paths.join(folder, part);
+    const entry = interfaceOf.get(folder);
+    if (entry !== undefined) return entry === edge.to ? null : [folder, entry];
+  }
+  return null;
 }

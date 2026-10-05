@@ -1,0 +1,8 @@
+name: widget evals
+on: pull_request
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: widget/evals/regression.sh origin/main

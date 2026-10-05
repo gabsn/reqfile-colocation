@@ -1,7 +1,7 @@
 # reqfile-colocation
 
 A shareable [reqfile](https://reqfile.dev) requirement: **COLOCATION**, code
-lives in the lowest folder that contains everything using it.
+lives in the folder of its feature, which can be deleted on its own.
 
 This is a spike of what a community requirement package looks like: the
 requirement, its checker and its labeled benchmark, in one repository with the
@@ -49,6 +49,7 @@ It resolves imports of TS/JS, Python and Rust into a file graph, then flags:
 | a file used only from one folder, living outside it | 0.9 |
 | a test living outside the folder of the code it tests | 0.85 |
 | one feature split across sibling layer folders (models/, services/…) | 0.85 |
+| an import that enters a folder past its interface (index.ts, __init__.py, mod.rs exporting items) | 0.8 |
 | a file whose items serve disjoint sets of users | 0.75 |
 
 A probability above 0.7 is a violation (`thresholds` in Reqfile.yaml); files
