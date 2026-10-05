@@ -1,0 +1,4 @@
+expected: ok
+rationale: "Hard: tests/polygon.rs holds the polygon feature's whole integration suite and its fixture in cargo's tests/, a place the tool imposes: conforming by the author's decision. Relabeled from violation (its independent author read tests/ as having to stay a thin entry point)."
+origin: authored
+split: holdout

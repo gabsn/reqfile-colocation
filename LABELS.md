@@ -32,17 +32,22 @@ tuning the checker to one reading.
 | `ok-python-imports-a-reexported-submodule` and its twin | billing used by `app/` only | billing also used by `reports/` | With one user, billing would break "a domain used by one feature lives inside it", a different rule from the one the pair isolates. |
 | `violation-crate-split-core-shell`, `violation-package-by-layer` | findings narrowed / widened | | `findings` list every file a correct checker must flag (all are required by reqfile). |
 
-## Open boundary questions (for the author)
+## Boundary questions, decided by the author (2026-10-05)
 
-| Example | Labeled | Other reading | What would settle it |
-|---|---|---|---|
-| `violation-feature-loose-in-flat-folder` | violation (author's decision) | `add.rs` and `update.rs` are two features sharing `sources.rs`, a module beside them (blind reviewer, twice) | Which files form one feature is not in the code; `colocation.yaml` `roots` with `shared` declares it, and `violation-undeclared-helper-under-declared-root` shows the declared form. |
-| `violation-undeclared-helper-under-declared-root` | violation | `sources.rs` sits beside its two users, fine (blind reviewer) | The meaning of a declared root: every module several features use must be listed under `shared`. Written in the README; confirm. |
-| `ok-generated-code-reaches-in` | ok | importing `__generated__/graphql.ts` past its generated `index.ts` bypasses an interface (blind reviewer) | Whether generated code's layout counts. The checker exempts it (its tool decides the layout). |
-| `violation-py-public-and-private-top-folders` (confirmation) | violation (its author) | `public/` and `private/` inside `atlas/` are layering inside one module, which is free (blind reviewer) | Whether `atlas/` is one module or a folder of features. |
-| `violation-rs-polygon-tests-and-fixture-in-tests-dir` (confirmation) vs `ok-rust-tool-imposed-tests` (development) | violation vs ok | Rust integration tests in `tests/` are a tool-required location and may hold test code | Whether "a tool-required location holds only a thin entry point" applies to Rust `tests/`. The two examples contradict each other; one must change. |
-| `ok-ts-rank-unit-test-beside-search-e2e-at-root` (confirmation) | ok | an end-to-end test of the whole app in a root `tests/` is still a test away from its subject | Where tests of a whole program live. The checker accepts a test whose subjects are all entry points anywhere in its package. |
-| `violation-py-business-days-inside-invoicing-used-by-payroll` (confirmation) | violation (its author) | payroll uses `is_business_day` through invoicing's interface, which is allowed | Whether a domain re-exported by one feature for another is still that feature's. |
+| Question | Decision | Effect on labels |
+|---|---|---|
+| Rust integration tests in cargo's `tests/`, even of one module, with fixtures | Conforming: the tool imposes the place, with no alternative | `violation-rust-cronlite` and `violation-rs-polygon-tests-and-fixture-in-tests-dir` (confirmation) relabeled ok and renamed `ok-rust-cronlite-module-tests-in-cargo-tests`, `ok-rs-polygon-tests-and-fixture-in-cargo-tests` |
+| A package-level `tests/` (pytest, mirror trees) | Scope by placement: `tests/` at a package root holds package-wide tests only; a test of one feature lives with it, except where a tool imposes the place | unchanged |
+| Scope by placement ("emboîtement") | Part of COLOCATION, now in the `must`: a folder's place says whom it serves (`infra/` serves all, `billing/infra/` serves billing) | none |
+| A parent entering its subfolder past the subfolder's interface | A subfolder with an interface is a black box for all code outside it, parent included | `violation-python-submodule-past-reexporting-init` stays a violation |
+| A package and a folder named alike (`platform/agent-evals`, `voxrouter/agent-evals`) | Conforming when the package is shared, i.e. code of another feature uses it (CI and root configuration are consumers); a tool can be declared `shared` in colocation.yaml | none |
+| Generated code's `index.ts` | Not an interface: generated layout is the tool's | `ok-generated-code-reaches-in` stays ok |
+| `atlas/public/` + `atlas/private/` across two features | Violation: visibility layering is free only inside one feature | stays a violation |
+| A domain one feature re-exports for another (`business_days`) | Violation: what serves several features lives at their common level | stays a violation |
+| Several files of one feature loose among others (pins) | Violation (earlier decision); checkable under declared `roots` | unchanged |
+
+When a detail is still open, the rule that applies is the one that keeps the
+requirement simplest and most coherent for an agent applying it.
 
 ## Disagreements of the checker with real code, decided by reviewers
 

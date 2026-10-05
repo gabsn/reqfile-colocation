@@ -144,6 +144,7 @@ function splitRule(repo: Repo, edges: Edge[]): Violation[] {
         const rest = below(paths.dir(f));
         return rest[0] === name || rest[1] === name;
       };
+      if (repo.config.shared.some((x) => paths.within(b, x) || paths.within(x, b))) continue;
       const others = manifestOf(repo, b) !== undefined && edges.some(
         (o) =>
           paths.within(o.to, b) &&
@@ -226,6 +227,9 @@ function rootsRule(repo: Repo, edges: Edge[], config: Config): Violation[] {
 
 function declaredButMissing(repo: Repo, config: Config): Unverifiable[] {
   const out: Unverifiable[] = [];
+  for (const shared of config.shared) {
+    if (!repo.folders.has(shared) && !repo.files.has(shared)) out.push({ path: "colocation.yaml", reason: `shared ${shared} is not in the repository` });
+  }
   for (const root of config.roots) {
     if (!repo.folders.has(root.path)) out.push({ path: "colocation.yaml", reason: `root ${root.path} is not a folder of the repository` });
     for (const shared of root.shared) {

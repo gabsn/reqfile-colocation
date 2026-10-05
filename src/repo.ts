@@ -24,6 +24,9 @@ export type Config = {
   roots: { path: string; shared: string[] }[];
   /** Findings accepted on purpose; each must match at least one finding. */
   exceptions: { path: string; rule: string; reason: string }[];
+  /** Packages or folders declared shared tools: a folder named like one of
+   * them that depends on it is its user, not its other half. */
+  shared: string[];
 };
 
 export const CONFIG = "colocation.yaml";
@@ -50,7 +53,7 @@ export function load(): Repo {
     }
     return text;
   };
-  const config = files.has(CONFIG) ? parseConfig(read(CONFIG)) : { roots: [], exceptions: [] };
+  const config = files.has(CONFIG) ? parseConfig(read(CONFIG)) : { roots: [], exceptions: [], shared: [] };
   return { root: process.cwd(), files, folders, read, config };
 }
 
@@ -62,7 +65,7 @@ export function parseConfig(text: string): Config {
   const doc: unknown = parse(text) ?? {};
   if (typeof doc !== "object" || Array.isArray(doc)) fail("expected a mapping");
   const record = doc as Record<string, unknown>;
-  for (const key of Object.keys(record)) if (!["roots", "exceptions"].includes(key)) fail(`unknown key \`${key}\``);
+  for (const key of Object.keys(record)) if (!["roots", "exceptions", "shared"].includes(key)) fail(`unknown key \`${key}\``);
   const list = (value: unknown, where: string): unknown[] =>
     value === undefined ? [] : Array.isArray(value) ? value : fail(`\`${where}\` must be a list`);
   const text_ = (value: unknown, where: string): string =>
@@ -80,6 +83,7 @@ export function parseConfig(text: string): Config {
         shared: list(root.shared, "roots.shared").map((s) => text_(s, "roots.shared")),
       };
     }),
+    shared: list(record.shared, "shared").map((x) => paths.normalize(text_(x, "shared")) ?? fail("shared leaves the repository")),
     exceptions: list(record.exceptions, "exceptions").map((x) => {
       const e = entry(x, "exceptions", ["path", "rule", "reason"]);
       return { path: text_(e.path, "exceptions.path"), rule: text_(e.rule, "exceptions.rule"), reason: text_(e.reason, "exceptions.reason") };

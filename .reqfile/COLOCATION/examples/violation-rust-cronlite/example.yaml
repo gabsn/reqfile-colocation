@@ -1,8 +1,0 @@
-expected: violation
-findings:
-  - tests/parse.rs
-  - tests/parse_field.rs
-  - tests/schedule.rs
-rationale: "Hard: tests/ is a tool-required location, but parse.rs, parse_field.rs and schedule.rs mirror the source modules one by one instead of living with the code they test."
-origin: authored
-split: holdout

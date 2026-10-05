@@ -99,28 +99,29 @@ they excuse. Excepted findings stay in the SARIF as accepted suppressions.
 
 ## Measures
 
-All versions on the same frozen corpus (`corpus-v2`, 68 examples): 40
+All versions on the same frozen corpus (`corpus-v3`, 68 examples): 40
 development examples, 16 + 12 confirmation examples written by two
-independent authors from the requirement alone, never used for tuning.
+independent authors from the requirement alone, never used for tuning (two of
+them relabeled ok by the author's decision on cargo's tests/, see LABELS.md).
 Caught violations / false alarms on correct examples:
 
 | Version | Development | Confirmation 1 | Confirmation 2 |
 |---|---|---|---|
-| 0.1.3 | 9/19, 1/21 | 0/8, 3/8 | 1/6, 0/6 |
-| 0.2.0 | 16/19, 2/21 | 1/8, 2/8 | 1/6, 2/6 |
-| **0.3.0 `verify` (blocking)** | 8/19, **0/21** | 1/8, **0/8** | 0/6, **0/6** |
-| 0.3.0 `verify` + `suggest` | 19/19, 0/21 | 2/8, 2/8 | 1/6, 2/6 |
+| 0.1.3 | 9/19, 1/21 | 0/7, 4/9 | 1/5, 0/7 |
+| 0.2.0 | 16/19, 2/21 | 1/7, 3/9 | 1/5, 2/7 |
+| **0.3.0 `verify` (blocking)** | 8/19, **0/21** | 1/7, **0/9** | 1/5, **0/7** |
+| 0.3.0 `verify` + `suggest` | 19/19, 0/21 | 2/7, 2/9 | 2/5, 2/7 |
 
-Confirmation 2 was measured once with the frozen candidate, as above. Its
-miss `violation-ts-monorepo-emails` showed that workspace packages were not
-resolved without node_modules; the fix that followed catches it (1/6, still
-0/6 false alarms), a number contaminated by having seen the case.
+Confirmation 2 was first measured once with the frozen candidate (0 caught,
+0 false alarms). Its miss `violation-ts-monorepo-emails` showed that workspace
+packages were not resolved without node_modules; the fix that followed
+catches it, so the 1/5 above is contaminated by having seen the case.
 
 What the numbers say: on cases nobody tuned it on, the blocking check raised
-no false alarm in 35 correct examples, and catches few violations: most
+no false alarm on 37 correct examples, and catches few violations: most
 violations in the corpus are about ownership (which files form one feature),
 which the code alone does not decide. 0.2.0's 16/19 in development fell to
-2/14 on independent cases: its heuristics fitted their own examples.
+2/12 on independent cases: its heuristics fitted their own examples.
 
 ### On real repositories
 

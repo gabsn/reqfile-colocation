@@ -217,3 +217,13 @@ test("a workspace package resolves by its package.json name without node_modules
   expect(deep.stderr).toContain("apps/worker/src/digest.ts:1  [interface]");
   expect(run({ ...files, "apps/worker/src/digest.ts": 'import { render } from "@acme/emails";\nexport const digest = () => render("x");\n' }).code).toBe(0);
 });
+
+test("a tool declared shared in colocation.yaml is not half of a feature named like it", () => {
+  const files = {
+    "platform/agent-evals/package.json": '{ "name": "@platform/agent-evals" }',
+    "platform/agent-evals/src/index.ts": "export const runEvals = () => 1;\n",
+    "voxrouter/agent-evals/e2e.ts": 'import { runEvals } from "@platform/agent-evals";\nconsole.log(runEvals());\n',
+  };
+  expect(run(files).stderr).toContain("[split]");
+  expect(run({ ...files, "colocation.yaml": "shared: [platform/agent-evals]\n" }).code).toBe(0);
+});
