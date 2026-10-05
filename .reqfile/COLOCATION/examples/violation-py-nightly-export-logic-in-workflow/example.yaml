@@ -1,0 +1,6 @@
+expected: violation
+findings:
+  - .github/workflows/nightly-export.yml
+rationale: "Hard: .github/workflows/ is a location the tool requires, but this workflow holds the whole low-stock export logic inline instead of a thin entry point into a feature, so the export feature lives in the tool location (ci.yml, which only runs pytest, is fine)."
+origin: authored
+split: holdout

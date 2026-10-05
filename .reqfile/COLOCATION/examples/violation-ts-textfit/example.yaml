@@ -1,0 +1,11 @@
+expected: violation
+findings:
+  - src/public/wrap.ts
+  - src/public/wrap.test.ts
+  - src/public/truncate.ts
+  - src/public/truncate.test.ts
+  - src/internal/break-words.ts
+  - src/internal/ellipsis.ts
+rationale: "The library groups code by visibility across features: src/public/ holds both features' entry points and src/internal/ both features' helpers, so neither feature can be deleted on its own."
+origin: authored
+split: holdout

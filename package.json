@@ -1,17 +1,37 @@
 {
   "name": "@g48in/reqfile-colocation",
-  "version": "0.1.3",
-  "description": "reqfile checker for COLOCATION: code lives in the lowest folder that contains everything using it",
-  "keywords": ["reqfile-requirement", "reqfile", "colocation", "lint"],
+  "version": "0.3.0",
+  "description": "reqfile checker for COLOCATION: each feature owns its code, exposes an interface, and can be deleted on its own",
+  "keywords": [
+    "reqfile-requirement",
+    "reqfile",
+    "colocation",
+    "lint"
+  ],
   "license": "MIT OR Apache-2.0",
-  "repository": { "type": "git", "url": "git+https://github.com/gabsn/reqfile-colocation.git" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gabsn/reqfile-colocation.git"
+  },
   "type": "module",
-  "bin": { "reqfile-colocation": "dist/main.js" },
-  "files": ["dist"],
+  "bin": {
+    "reqfile-colocation": "dist/main.js"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "bun build src/main.ts --target=node --outfile=dist/main.js",
+    "build": "bun build src/main.ts --target=node --outfile=dist/main.js --external typescript --external web-tree-sitter --external yaml && cp node_modules/tree-sitter-rust/tree-sitter-rust.wasm dist/",
     "test": "bun test",
     "prepublishOnly": "bun run build"
   },
-  "devDependencies": { "@types/bun": "^1.2.20", "typescript": "^5.9.0" }
+  "devDependencies": {
+    "@types/bun": "^1.2.20",
+    "tree-sitter-rust": "^0.24.0"
+  },
+  "dependencies": {
+    "typescript": "6.0.3",
+    "web-tree-sitter": "0.27.0",
+    "yaml": "^2.9.1"
+  }
 }

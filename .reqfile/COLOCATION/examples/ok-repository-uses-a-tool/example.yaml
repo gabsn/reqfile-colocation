@@ -1,0 +1,3 @@
+expected: ok
+rationale: "lint.yml runs widget's checker over the whole repository. It uses widget the way code uses an import; it is not part of widget, so it lives where it serves, not in widget/."
+origin: authored

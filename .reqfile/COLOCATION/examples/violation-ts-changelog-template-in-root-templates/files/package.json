@@ -1,0 +1,10 @@
+{
+  "name": "release-kit",
+  "private": true,
+  "version": "1.4.0",
+  "type": "module",
+  "scripts": {
+    "changelog": "bun src/changelog/cli.ts --template templates/changelog.md",
+    "bump": "bun src/version/cli.ts"
+  }
+}

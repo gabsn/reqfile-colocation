@@ -1,0 +1,6 @@
+expected: violation
+findings:
+  - src/models/invoice.ts
+  - src/models/parcel.ts
+rationale: "The same files as ok-feature-with-its-own-layer-folders, grouped by layer: models/ and services/ each hold half of billing and half of shipping, so deleting billing means editing both. invoice.ts is used only from services/, where issue.ts lives, and parcel.ts likewise."
+origin: authored

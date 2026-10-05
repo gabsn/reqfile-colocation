@@ -1,0 +1,5 @@
+{
+  "name": "@acme/web",
+  "private": true,
+  "dependencies": { "@acme/emails": "workspace:*" }
+}

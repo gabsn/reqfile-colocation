@@ -1,0 +1,3 @@
+expected: ok
+rationale: "The same features as violation-crate-split-core-shell, one module each. Inside check.rs and add.rs the pure domain code, the interface and the I/O are separated as sections of one file, so deleting a feature deletes one file and one line of main.rs."
+origin: authored

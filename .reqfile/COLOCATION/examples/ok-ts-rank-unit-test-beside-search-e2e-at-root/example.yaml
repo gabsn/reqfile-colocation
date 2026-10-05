@@ -1,0 +1,4 @@
+expected: ok
+rationale: "Hard: a root tests/ folder exists, but it only holds an end-to-end test of the whole CLI, which merely uses features; the rank unit test and its fixture live inside src/search/, so search keeps its own tests."
+origin: authored
+split: holdout

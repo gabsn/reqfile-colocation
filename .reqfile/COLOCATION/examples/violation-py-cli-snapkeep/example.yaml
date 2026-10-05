@@ -1,0 +1,6 @@
+expected: violation
+findings:
+  - snapkeep/manifest.py
+rationale: "Hard: manifest.py sits beside the commands as if shared, but only snapshot uses it, so it belongs inside snapshot/."
+origin: authored
+split: holdout

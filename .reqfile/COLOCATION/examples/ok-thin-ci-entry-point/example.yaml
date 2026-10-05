@@ -1,0 +1,3 @@
+expected: ok
+rationale: "The workflow GitHub requires only calls widget/evals/regression.sh; the logic lives with widget, so deleting widget/ leaves one dangling file that names it."
+origin: authored

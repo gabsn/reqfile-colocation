@@ -1,0 +1,3 @@
+expected: ok
+rationale: "Reconstructed from false alarms on real repositories: routeTree.gen.ts, written by TanStack Router, imports each route file past routes/index.tsx, and balance.ts imports a generated GraphQL SDK file directly. Generated code is laid out by its tool, not by design, so neither is a reach past an interface."
+origin: authored

@@ -1,0 +1,3 @@
+expected: ok
+rationale: "The same code as violation-feature-loose-in-flat-folder, with the pins feature in src/pins/, entered through mod.rs. Deleting it deletes one folder and two lines of main.rs; check.rs is a feature in one file, and format.rs, shared by both, is a module beside them."
+origin: authored

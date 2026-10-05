@@ -1,0 +1,3 @@
+roots:
+  - path: src
+    shared: [src/format.rs]

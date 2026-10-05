@@ -1,0 +1,3 @@
+expected: ok
+rationale: "Hard, a false block 548036a raised (principal engineer's review): orders and billing are two domains, each with its own api/ layer; orders calls billing's interface to invoice an order. A shared folder name and a dependency do not make one feature split in two."
+origin: authored

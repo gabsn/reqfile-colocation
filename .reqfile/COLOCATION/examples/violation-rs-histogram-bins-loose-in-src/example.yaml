@@ -1,0 +1,6 @@
+expected: violation
+findings:
+  - src/bins.rs
+rationale: "Hard: bins.rs looks like a generic utility module, but only histogram uses it; a domain used by one feature lives inside that feature, and here the histogram feature is two files loose in src/ among other features' files."
+origin: authored
+split: holdout

@@ -1,0 +1,4 @@
+expected: ok
+rationale: "Hard: health is a single-file feature beside the teams and invites folders, and invites reaches teams only through its __init__.py."
+origin: authored
+split: holdout

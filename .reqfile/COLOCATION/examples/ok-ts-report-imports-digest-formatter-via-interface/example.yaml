@@ -1,0 +1,4 @@
+expected: ok
+rationale: "Hard: reports reuses notifications' formatDigest, but imports it from the notifications folder's index.ts, which re-exports it, so it goes through the interface and both features stay deletable as folders."
+origin: authored
+split: holdout

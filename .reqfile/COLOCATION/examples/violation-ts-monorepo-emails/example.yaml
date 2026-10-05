@@ -1,0 +1,6 @@
+expected: violation
+findings:
+  - apps/worker/src/digest.ts
+rationale: "Hard: the worker reaches into @acme/emails/render, an implementation file, instead of the package's index.ts interface."
+origin: authored
+split: holdout

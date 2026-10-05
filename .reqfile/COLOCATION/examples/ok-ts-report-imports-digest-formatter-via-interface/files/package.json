@@ -1,0 +1,8 @@
+{
+  "name": "inbox-digest",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun src/main.ts"
+  }
+}

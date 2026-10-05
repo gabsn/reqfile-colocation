@@ -1,0 +1,4 @@
+expected: ok
+rationale: "Hard: the changelog template is only reached by a path in a package.json script, not an import, and it sits inside src/changelog/, so the changelog feature owns everything it uses and deleting the folder (plus its script line) removes it."
+origin: authored
+split: holdout

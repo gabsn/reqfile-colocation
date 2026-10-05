@@ -1,0 +1,6 @@
+expected: violation
+findings:
+  - src/core/plan.rs
+  - src/core/pins.rs
+rationale: "The shape reqfile's own engine had: the crate is split into core/ (pure) and shell/ (I/O) at the top, so each feature has a half in each. plan.rs serves only shell/check.rs and pins.rs only shell/add.rs; deleting the check or the add feature means editing both folders. Separating pure code from I/O is wanted, but inside each feature's module, not as crate-wide layers."
+origin: authored

@@ -1,0 +1,4 @@
+expected: ok
+rationale: "Hard: parse.rs and summary.rs are single-file features loose in src/, which is fine; the histogram feature has a helper, and it owns it as src/histogram/bins.rs behind histogram.rs, so the whole feature is one file plus its folder."
+origin: authored
+split: holdout

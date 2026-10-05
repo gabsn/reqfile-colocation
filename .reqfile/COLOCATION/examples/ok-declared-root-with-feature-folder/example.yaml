@@ -1,0 +1,3 @@
+expected: ok
+rationale: "The program of ok-multi-file-feature-in-its-folder, with src/ declared a root whose shared module is format.rs: pins/ holds add, update and the sources they share, check.rs is a feature in one file, format.rs is declared shared."
+origin: authored

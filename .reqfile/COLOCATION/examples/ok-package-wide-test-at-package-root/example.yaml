@@ -1,0 +1,3 @@
+expected: ok
+rationale: "Hard, a false block 548036a raised: tests/acceptance.test.ts covers billing and shipping, the whole package, so it is package-wide and may live at the package root (scope by placement)."
+origin: authored

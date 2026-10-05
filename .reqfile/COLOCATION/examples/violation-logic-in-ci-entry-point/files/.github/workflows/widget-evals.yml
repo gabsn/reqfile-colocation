@@ -1,0 +1,22 @@
+name: widget evals
+on: pull_request
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Compare widget's score with the base branch
+        run: |
+          base=$(git merge-base origin/main HEAD)
+          git worktree add /tmp/base "$base"
+          trap 'git worktree remove --force /tmp/base' EXIT
+          cargo build --release --manifest-path /tmp/base/widget/Cargo.toml
+          cargo build --release --manifest-path widget/Cargo.toml
+          /tmp/base/widget/target/release/widget widget/evals/corpus.txt > /tmp/before.jsonl
+          widget/target/release/widget widget/evals/corpus.txt > /tmp/after.jsonl
+          before=$(python3 widget/evals/score.py /tmp/before.jsonl)
+          after=$(python3 widget/evals/score.py /tmp/after.jsonl)
+          echo "score: $before -> $after"
+          python3 -c "import sys; sys.exit(float('$after') < float('$before'))"
