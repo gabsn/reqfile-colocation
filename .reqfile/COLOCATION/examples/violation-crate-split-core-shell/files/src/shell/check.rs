@@ -1,6 +1,6 @@
 use crate::core::plan::plan;
 
-/// Lists the repository and runs the planned checks: the I/O half of `check`.
+/// Lists the repository and runs the planned checks.
 pub fn run() {
     let files: Vec<String> = std::fs::read_dir(".")
         .unwrap()

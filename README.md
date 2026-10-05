@@ -66,6 +66,14 @@ bun install && bun test          # unit tests
 reqfile eval                     # the labeled benchmark
 ```
 
+Each violation names in `findings` every file a correct checker must flag.
+About a quarter of the examples, whole pairs at a time, are `split: holdout`:
+measured apart and never used to tune the checker. Failures the checker is
+known to have are marked `known: miss` or `known: false_alarm`, and are
+removed once it handles them. Labels were checked blind: an independent
+reviewer labeled every case from the `must` alone, and each disagreement was
+settled by rewording the `must`, fixing the case, or a decision by the author.
+
 Examples are chosen because a person judges them hard, near misses on both
 sides of the rule included, not because the checker fails them, and each
 rationale says why. A benchmark every version passes cannot show that a change

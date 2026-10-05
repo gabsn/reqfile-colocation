@@ -3,3 +3,4 @@ findings:
   - src/money.ts
 rationale: "Hard: money.ts is rightly shared for formatMoney, used by billing and cart, but invoiceTotal serves billing only and should live in billing/. The file as a whole has users in two features, which hides the misplaced item."
 origin: authored
+known: miss

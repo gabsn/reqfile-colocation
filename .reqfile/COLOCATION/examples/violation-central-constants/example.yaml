@@ -1,5 +1,6 @@
 expected: violation
 findings:
   - src/constants.rs
-rationale: "constants.rs holds constants that each serve one module (http, sync)."
+rationale: "constants.rs holds constants that each serve one module (http, sync), so deleting sync leaves its retry constants behind."
 origin: authored
+split: holdout

@@ -1,4 +1,4 @@
-"""Private evaluation of the public widget crate on the internal corpus."""
+"""Runs the widget crate's tests before scoring it on the corpus."""
 import subprocess
 from pathlib import Path
 

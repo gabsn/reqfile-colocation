@@ -1,3 +1,4 @@
 expected: ok
 rationale: "A real false alarm of the first checker on its own code: a function and the type it returns, used by different callers, are one piece."
 origin: authored
+split: holdout

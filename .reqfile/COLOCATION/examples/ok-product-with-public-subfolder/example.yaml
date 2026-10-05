@@ -1,3 +1,4 @@
 expected: ok
 rationale: "The same product in one folder: widget/oss/ holds what is published, widget/evals/ what stays private, so deleting widget deletes one folder. Visibility is a subfolder inside the feature, not a top-level layer."
 origin: authored
+split: holdout

@@ -1,5 +1,10 @@
 expected: violation
 findings:
   - crm/models/invoice.py
-rationale: "Invoices and customers are each split across models/, repositories/ and services/."
+  - crm/models/customer.py
+  - crm/repositories/invoice_repository.py
+  - crm/repositories/customer_repository.py
+  - crm/services/invoice_service.py
+  - crm/services/customer_service.py
+rationale: "Invoices and customers are each split across the layer folders models/, repositories/ and services/, so deleting invoices means editing all three."
 origin: authored

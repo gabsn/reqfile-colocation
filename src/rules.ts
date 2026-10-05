@@ -69,7 +69,7 @@ export function judge(
   const interfaceOf = interfaces(files, sources);
   for (const edge of edges) {
     if (source.isTest(edge.from)) continue;
-    const reached = pastInterface(edge, interfaceOf);
+    const reached = pastInterface(edge, interfaceOf, sources);
     if (!reached) continue;
     const [folder, entry] = reached;
     judged.add(edge.from);
@@ -237,15 +237,27 @@ function interfaces(files: Set<string>, sources: Map<string, string>): Map<strin
 }
 
 /** When `edge` enters a folder from outside and lands on a file other than
- * that folder's interface: the folder and its interface. */
-function pastInterface(edge: Edge, interfaceOf: Map<string, string>): [string, string] | null {
+ * that folder's interface: the folder and its interface. A Rust path cannot
+ * reach a private submodule (`mod add;`), so a path naming one, such as
+ * `pins::add` for an item re-exported under that name, is not counted. */
+function pastInterface(edge: Edge, interfaceOf: Map<string, string>, sources: Map<string, string>): [string, string] | null {
   const common = paths.commonFolder([paths.dir(edge.from), paths.dir(edge.to)]);
   const inner = paths.dir(edge.to).split("/").slice(common === "" ? 0 : common.split("/").length);
   let folder = common;
   for (const part of inner) {
     folder = paths.join(folder, part);
     const entry = interfaceOf.get(folder);
-    if (entry !== undefined) return entry === edge.to ? null : [folder, entry];
+    if (entry === undefined) continue;
+    if (entry === edge.to || privateRustModule(entry, folder, edge.to, sources)) return null;
+    return [folder, entry];
   }
   return null;
+}
+
+/** Whether `target` is a submodule its folder's Rust interface declares private. */
+function privateRustModule(entry: string, folder: string, target: string, sources: Map<string, string>): boolean {
+  if (!entry.endsWith(".rs") || !target.endsWith(".rs")) return false;
+  const rest = target.slice(folder.length + 1);
+  const name = rest.split("/")[0].replace(/\.rs$/, "");
+  return new RegExp(`^\\s*mod\\s+${name}\\s*;`, "m").test(sources.get(entry) ?? "");
 }

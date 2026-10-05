@@ -3,3 +3,4 @@ findings:
   - .github/workflows/widget-evals.yml
 rationale: "Hard: GitHub requires workflows in .github/workflows/, but this one holds widget's evaluation logic inline, so deleting widget/ leaves it behind and changing the evals means editing two places. A required location should hold only a thin entry point into the feature's folder."
 origin: authored
+known: miss
