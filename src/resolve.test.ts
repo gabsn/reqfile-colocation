@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { edges, type Project } from "./resolve";
 
 function project(sources: Record<string, string>, aliases: Project["aliases"]): Project {
-  return { files: new Set(Object.keys(sources)), sources: new Map(Object.entries(sources)), crates: new Map(), pythonRoots: [""], aliases };
+  return { files: new Set(Object.keys(sources)), sources: new Map(Object.entries(sources)), crates: new Map(), pythonRoots: [""], aliases, workflows: new Map() };
 }
 
 test("an import through a tsconfig path alias resolves to the file it names", () => {

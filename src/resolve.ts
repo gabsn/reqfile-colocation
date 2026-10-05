@@ -20,6 +20,8 @@ export type Project = {
   pythonRoots: string[];
   /** Path aliases of each tsconfig.json or jsconfig.json, by its folder. */
   aliases: Map<string, Alias[]>;
+  /** GitHub Actions workflows, by path, with their text. */
+  workflows: Map<string, string>;
 };
 
 /** `@/*` -> `src/*`: a specifier prefix and the repository paths it stands for. */

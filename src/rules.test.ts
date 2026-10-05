@@ -66,3 +66,16 @@ test("an item whose users all live elsewhere is flagged; inside a module, groupi
   ];
   expect(flagged(sources, edges)).toEqual(["src/money.ts: invoiceTotal serves only src/billing/"]);
 });
+
+test("a workflow step holding a feature's logic inline is flagged; a call into its folder is not", () => {
+  const sources = { "widget/score.py": "", "widget/regression.sh": "" };
+  const thick = "jobs:\n  e:\n    steps:\n      - run: |\n          cargo build --manifest-path widget/Cargo.toml\n          widget/target/release/widget a > before\n          widget/target/release/widget b > after\n          python3 widget/score.py before\n          python3 widget/score.py after\n";
+  const thin = "jobs:\n  e:\n    steps:\n      - run: widget/regression.sh origin/main\n";
+  const files = new Set(Object.keys(sources));
+  const judged = (workflow: string) =>
+    judge(files, new Map(Object.entries(sources)), [], new Set(), new Map([[".github/workflows/e.yml", workflow]]))
+      .filter((j) => j.probability > 0.7)
+      .map((j) => j.path);
+  expect(judged(thick)).toEqual([".github/workflows/e.yml"]);
+  expect(judged(thin)).toEqual([]);
+});

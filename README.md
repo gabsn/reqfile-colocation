@@ -42,7 +42,7 @@ or `pass`, each with `properties.probability`, the probability that the file
 breaks COLOCATION. Exit 0 when nothing fails, 1 when something does, 2 when it
 cannot run.
 
-It resolves imports of TS/JS, Python and Rust into a file graph, then flags:
+It resolves imports of TS/JS (with tsconfig path aliases), Python and Rust into a file graph, reads the GitHub workflows, then flags:
 
 | Signal | Probability |
 |---|---|
@@ -50,7 +50,9 @@ It resolves imports of TS/JS, Python and Rust into a file graph, then flags:
 | a test living outside the folder of the code it tests | 0.85 |
 | one feature split across sibling layer folders (models/, services/…) | 0.85 |
 | an import that enters a folder past its interface (index.ts, __init__.py, mod.rs exporting items) | 0.8 |
-| a file whose items serve disjoint sets of users | 0.75 |
+| an item, or the items one block names, whose users all live in a folder without its file (not in an interface) | 0.75 |
+| at a root, a file whose items serve disjoint sets of users | 0.75 |
+| a workflow step running 5 or more lines of shell on a top-level folder's files, instead of calling a script there | 0.8 |
 
 A probability above 0.7 is a violation (`thresholds` in Reqfile.yaml); files
 judged fine are reported as `pass` results with 0.1.

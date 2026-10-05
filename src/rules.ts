@@ -13,6 +13,9 @@ const LAYERED = 0.85;
 const GRAB_BAG = 0.75;
 const ITEM_AWAY = 0.75;
 const PAST_INTERFACE = 0.8;
+const THICK_ENTRY = 0.8;
+/** Lines of shell a workflow step may hold before it is a feature's logic. */
+const ENTRY_LINES = 5;
 const PLACED = 0.1;
 
 /** Folder names that group code by technical layer rather than by feature. */
@@ -28,6 +31,7 @@ export function judge(
   sources: Map<string, string>,
   edges: Edge[],
   crates: Set<string>,
+  workflows: Map<string, string> = new Map(),
 ): Judgment[] {
   const findings = new Map<string, [number, string][]>();
   const judged = new Set<string>();
@@ -86,6 +90,11 @@ export function judge(
     const [folder, entry] = reached;
     judged.add(edge.from);
     add(edge.from, PAST_INTERFACE, `reaches into ${folder}/ past its interface ${paths.name(entry)} (imports ${relativeTo(folder, edge.to)})`);
+  }
+
+  for (const [path, message] of thickEntryPoints(workflows, files)) {
+    judged.add(path);
+    add(path, THICK_ENTRY, message);
   }
 
   for (const [path, message] of layered(files)) {
@@ -316,4 +325,45 @@ function itemsAway(target: string, edges: Edge[], text: string): [string[], stri
     if (!paths.within(home, folder)) away.push([[...group].sort(), orRoot(folder)]);
   }
   return away;
+}
+
+/** Workflow steps whose `run:` holds several lines of shell working on a
+ * top-level folder's files, rather than calling a script that lives there. */
+function thickEntryPoints(workflows: Map<string, string>, files: Set<string>): [string, string][] {
+  const folders = new Set([...files].filter((f) => f.includes("/")).map((f) => f.split("/")[0]));
+  const found: [string, string][] = [];
+  for (const [path, text] of workflows) {
+    for (const script of runBlocks(text)) {
+      const lines = script.split("\n").filter((l) => l.trim() !== "" && !l.trim().startsWith("#"));
+      if (lines.length < ENTRY_LINES) continue;
+      const named = [...folders].filter((f) => new RegExp(`(^|[\\s"'=])${f}/`).test(script));
+      if (named.length === 0) continue;
+      found.push([path, `runs ${lines.length} lines of shell on ${named.map((f) => `${f}/`).join(", ")} inline; move them into a script in that folder and call it`]);
+    }
+  }
+  return found;
+}
+
+/** The scripts of a workflow's `run:` keys: a one-line value, or a `|` / `>`
+ * block, whose lines are those indented deeper than the key. */
+function runBlocks(text: string): string[] {
+  const lines = text.split("\n");
+  const blocks: string[] = [];
+  lines.forEach((line, i) => {
+    const m = line.match(/^(\s*)(?:-\s+)?run:\s*(.*)$/);
+    if (!m) return;
+    const value = m[2].trim();
+    if (!/^[|>][-+]?$/.test(value)) {
+      if (value !== "") blocks.push(value);
+      return;
+    }
+    const indent = line.length - line.trimStart().length;
+    const body: string[] = [];
+    for (const next of lines.slice(i + 1)) {
+      if (next.trim() !== "" && next.length - next.trimStart().length <= indent) break;
+      body.push(next);
+    }
+    blocks.push(body.join("\n"));
+  });
+  return blocks;
 }

@@ -22,6 +22,14 @@ function listFiles(): Set<string> {
   return new Set(out.split("\0").filter((p) => p !== "" && !p.split("/").some((part) => part.startsWith("."))));
 }
 
+/** The GitHub Actions workflows, which listFiles leaves out with every hidden folder. */
+function listWorkflows(): string[] {
+  const out = execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", ".github/workflows"], {
+    encoding: "utf8",
+  });
+  return out.split("\0").filter((p) => /\.ya?ml$/.test(p));
+}
+
 function load(): Project {
   const files = listFiles();
   const read = (path: string) => readFileSync(path, "utf8");
@@ -45,7 +53,8 @@ function load(): Project {
       throw new Error(`${config}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  return { files, sources, crates, pythonRoots: [...pythonRoots], aliases };
+  const workflows = new Map(listWorkflows().map((path) => [path, read(path)]));
+  return { files, sources, crates, pythonRoots: [...pythonRoots], aliases, workflows };
 }
 
 /** The `compilerOptions.paths` of a tsconfig, as repository paths. JSON with
@@ -73,7 +82,7 @@ function main(): number {
     console.error(`reqfile-colocation: ${error instanceof Error ? error.message : String(error)}`);
     return 2;
   }
-  const judgments = judge(project.files, project.sources, edges(project), new Set(project.crates.keys()));
+  const judgments = judge(project.files, project.sources, edges(project), new Set(project.crates.keys()), project.workflows);
   process.stdout.write(`${JSON.stringify(report(judgments, pkg.version))}\n`);
   return judgments.some(failed) ? 1 : 0;
 }
