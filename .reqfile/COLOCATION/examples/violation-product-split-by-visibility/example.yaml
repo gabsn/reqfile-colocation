@@ -1,0 +1,5 @@
+expected: violation
+findings:
+  - oss/widget/src/lib.rs
+rationale: "Hard: one product split by visibility. The public crate is in oss/widget/ and its private evals in widget/evals/, so deleting widget means deleting two top-level folders; oss/ groups code by who may read it, a layer, not a feature. The evals reach the crate through a path in a command, not an import."
+origin: authored
