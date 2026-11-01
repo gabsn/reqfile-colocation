@@ -117,10 +117,10 @@ interleaved runs on a laptop):
 
 | Run | 0.3.0 | 0.4.0 |
 |---|---|---|
-| `verify`, empty cache | 1.70 s | 1.53 s |
-| `verify` then `suggest`, empty cache | 3.63 s | 2.01 s |
-| `verify`, nothing changed | 1.70 s | 0.23 s |
-| `verify`, one file edited | 1.70 s | 0.84 s |
+| `verify`, empty cache | 1.54 s | 1.38 s |
+| `verify` then `suggest`, empty cache | 3.23 s | 1.84 s |
+| `verify`, nothing changed | 1.54 s | 0.20 s |
+| `verify`, one file edited | 1.54 s | 0.76 s |
 
 ### Blocking rules
 
