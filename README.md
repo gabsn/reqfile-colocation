@@ -80,29 +80,37 @@ literals. A path into another package depends on that package.
 
 ### Cache
 
-A second run reads only what changed (since 0.4.0). The cache lives in
+A second run on an unchanged tree only checks that it is unchanged, and an
+edited file is parsed again alone (since 0.4.0). The cache lives in
 `$REQFILE_CACHE/colocation`, else in the git folder,
 `.git/reqfile/colocation`, shared by every worktree, beside reqfile's own
 answers. It follows the repository: a CI job starts cold unless it keeps
-that folder between runs. Every entry is keyed on content, so none is ever
-stale:
+that folder between runs. Every entry is keyed on what the analysis reads:
 
 - **What a file says on its own** (its imports, path literals, parse error)
   is keyed by its git blob hash and its name: an edited file is parsed
   again, the others are not (TypeScript, JavaScript and Python; Rust files
   are parsed again whenever the result is recomputed).
-- **The whole result**, analysis and report, is keyed on the version, the
-  repository's folder and the blob hash of every file git lists (`git
-  ls-files -s`, the working copy's bytes for modified and untracked files).
+- **The whole result**, analysis and report, is keyed on the checker's own
+  code, its runtime and dependencies' versions, the repository's folder and
+  the blob hash of every file git lists: the index's, else the bytes the
+  analysis reads (modified and untracked files, symlinks through to their
+  target, files marked `assume-unchanged` or `skip-worktree`). Any change
+  recomputes it: module resolution and Rust parsing then run in full.
   Module resolution also reads what git does not list (node_modules, ignored
   build output, a tsconfig extended from a package): each such lookup is
   recorded with its answer, and the result is reused only if every lookup
   still answers the same. `verify` then `suggest` on one tree share one
   analysis.
 
-The cache never changes a report: on every example of the four frozen
-corpora and on arkadia, cold and warm runs print byte for byte what 0.3.0
-prints, version aside. Delete the folder to start cold.
+Evidence that the cache does not change a report: on every example of the
+four frozen corpora and on arkadia, cold and warm runs print byte for byte
+what 0.3.0 prints, version aside (unchanged trees); `src/cache.test.ts`
+changes one input at a time (an edit, a revert, a symlink's target, a flagged
+file, tsconfig and package.json, a new, deleted or ignored file, an installed
+package) and checks that the warm run prints what a cold one does. Not
+covered: git clean/smudge filters, whose working copy differs from the blob a
+fact is keyed on. Delete the folder to start cold.
 
 On arkadia (about 2,300 files, 1,000 of them TypeScript; medians of 5
 interleaved runs on a laptop):

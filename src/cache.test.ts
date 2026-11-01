@@ -4,7 +4,7 @@
 
 import { expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { gunzipSync } from "node:zlib";
@@ -99,6 +99,38 @@ test("run from a subfolder, an edit in the working copy is seen", () => {
   r.write("app/src/main.ts", 'import { total } from "./billing/tax";\nconsole.log(total(2));\n');
   expect(run().code).toBe(1);
 });
+
+test("a tracked symlink is keyed on its target: an edit of a file it points to is seen", () => {
+  const r = repo(BASE);
+  symlinkSync("main.ts", join(r.dir, "src/entry.ts"));
+  r.git("add", ".");
+  r.git("commit", "-qm", "base");
+  expect(r.check().code).toBe(0);
+  r.write("src/main.ts", 'import { total } from "./billing/tax";\nconsole.log(total(2));\n');
+  // The link's own blob (its text) did not change; what it reads did.
+  expect(r.check().stderr).toContain("src/entry.ts:1  [interface]");
+});
+
+test("a tracked symlink to a file git ignores is keyed on its target's bytes", () => {
+  const r = repo({ ...BASE, ".gitignore": "gen/\n", "gen/main.ts": 'import { total } from "../src/billing";\n' });
+  symlinkSync("../gen/main.ts", join(r.dir, "src/generated.ts"));
+  r.git("add", ".");
+  r.git("commit", "-qm", "base");
+  expect(r.check().code).toBe(0);
+  r.write("gen/main.ts", 'import { total } from "../src/billing/tax";\n');
+  expect(r.check().code).toBe(1);
+});
+
+for (const flag of ["--skip-worktree", "--assume-unchanged"])
+  test(`an edit of a file marked ${flag}, which git status does not report, is seen`, () => {
+    const r = repo(BASE);
+    r.git("add", ".");
+    r.git("commit", "-qm", "base");
+    r.git("update-index", flag, "src/main.ts");
+    expect(r.check().code).toBe(0);
+    r.write("src/main.ts", 'import { total } from "./billing/tax";\nconsole.log(total(2));\n');
+    expect(r.check().code).toBe(1);
+  });
 
 test("a tsconfig change is seen: a paths alias added, then removed", () => {
   const r = repo({ ...BASE, "src/main.ts": 'import { total } from "@/billing";\nconsole.log(total(2));\n' });

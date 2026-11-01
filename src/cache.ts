@@ -22,7 +22,8 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { gunzipSync, gzipSync } from "node:zlib";
 import type TS from "typescript";
 
@@ -65,7 +66,9 @@ export function directory(env: NodeJS.ProcessEnv, gitDir: string): string {
   return env.REQFILE_CACHE ? join(env.REQFILE_CACHE, "colocation") : join(gitDir, "reqfile", "colocation");
 }
 
-const git = (args: string[]) => execFileSync("git", args, { encoding: "utf8", maxBuffer: 1 << 30 });
+// `--no-optional-locks`: reading the repository never writes its index, so a
+// check never holds index.lock against a concurrent `git add` or commit.
+const git = (args: string[]) => execFileSync("git", ["--no-optional-locks", ...args], { encoding: "utf8", maxBuffer: 1 << 30 });
 
 const sha = (text: string | Buffer) => createHash("sha256").update(text).digest("hex");
 
@@ -75,16 +78,22 @@ export function blobHash(bytes: Buffer): string {
 }
 
 /** The blob hash of every listed file: the index's for files the working tree
- * has unchanged, the file's own bytes for modified and untracked ones. */
+ * has unchanged, the bytes the analysis will read for every other one. */
 export function blobs(repo: Repo, prefix: string): Map<string, string> {
   const out = new Map<string, string>();
-  for (const entry of git(["ls-files", "-s", "-z"]).split("\0")) {
-    const m = entry.match(/^\d+ ([0-9a-f]+) \d\t(.*)$/s);
-    if (m && repo.files.has(m[2])) out.set(m[2], m[1]);
+  // The bytes read are not the index's blob for a symlink (git stores its
+  // link text, the analysis reads its target) nor for a file git is told not
+  // to compare (`assume-unchanged`: a lowercase tag; `skip-worktree`, sparse
+  // checkouts included: `S`), whose edits `git status` does not report.
+  const own: string[] = [];
+  for (const entry of git(["ls-files", "-s", "-v", "-z"]).split("\0")) {
+    const m = entry.match(/^(\S) (\d+) ([0-9a-f]+) \d\t(.*)$/s);
+    if (!m || !repo.files.has(m[4])) continue;
+    if (m[2] === "120000" || m[1] === "S" || m[1] !== m[1].toUpperCase()) own.push(m[4]);
+    else out.set(m[4], m[3]);
   }
   // Files whose working copy differs from the index (` M`, ` D`, ` T`...) or
-  // that git does not track (`??`). `git status` refreshes the index's stat
-  // data, so the next run compares only what changed.
+  // that git does not track (`??`).
   const changed = git(["status", "--porcelain", "-z", "--no-renames", "--untracked-files=all", "--ignore-submodules=none"])
     .split("\0")
     .filter((e) => e.length > 3 && (e[1] !== " " || e.startsWith("??")))
@@ -92,17 +101,21 @@ export function blobs(repo: Repo, prefix: string): Map<string, string> {
     .map((e) => e.slice(3))
     .filter((p) => p.startsWith(prefix))
     .map((p) => p.slice(prefix.length));
-  const own = (path: string) => {
+  const hash = (path: string) => {
+    const full = join(repo.root, path);
     try {
-      out.set(path, blobHash(readFileSync(join(repo.root, path))));
+      // Through a symlink: its target's bytes.
+      out.set(path, blobHash(readFileSync(full)));
     } catch {
-      // Deleted, or not a file: what the analysis will meet when reading it.
-      out.set(path, "missing");
+      // Deleted, or not a file (a link to a folder, a dangling link): what the
+      // analysis will meet when reading it, and where the link points.
+      out.set(path, `missing:${fs.realpath(full)}`);
     }
   };
-  for (const path of changed) if (repo.files.has(path)) own(path);
+  for (const path of own) hash(path);
+  for (const path of changed) if (repo.files.has(path)) hash(path);
   // Anything else git listed (none expected) is hashed from its bytes too.
-  for (const path of repo.files) if (!out.has(path)) own(path);
+  for (const path of repo.files) if (!out.has(path)) hash(path);
   return out;
 }
 
@@ -114,15 +127,25 @@ export function typescript(): typeof TS {
 
 const require = createRequire(import.meta.url);
 
+/** The checker's own code (the bundle, or the sources run directly): a
+ * build that differs under the same version number never reuses a result. */
+function code(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const h = createHash("sha256");
+  for (const f of readdirSync(here).sort()) if (/\.(js|ts|py)$/.test(f)) h.update(f).update("\0").update(readFileSync(join(here, f)));
+  return h.digest("hex");
+}
+
 export function open(repo: Repo, version: string, env: NodeJS.ProcessEnv = process.env): Cache {
   // The folder's path from the top of the repository, and the shared git folder.
   const [prefix, common] = git(["rev-parse", "--show-prefix", "--git-common-dir"]).split("\n");
   const dir = directory(env, resolve(repo.root, common));
   const hashes = blobs(repo, prefix);
   const tsVersion = (require("typescript/package.json") as { version: string }).version;
+  const yamlVersion = (require("yaml/package.json") as { version: string }).version;
   const python = [...repo.files].some((f) => f.endsWith(".py")) ? pythonVersion() : "";
   const files = [...hashes].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  const key = sha(JSON.stringify({ format: FORMAT, version, typescript: tsVersion, python, root: repo.root, files }));
+  const key = sha(JSON.stringify({ format: FORMAT, version, code: code(), runtime: process.version, typescript: tsVersion, yaml: yamlVersion, python, root: repo.root, files }));
   const salt = `${FORMAT}\0${version}\0${tsVersion}\0${python}`;
 
   const packs = new Map<string, { entries: Map<string, unknown>; added: boolean }>();
@@ -235,10 +258,12 @@ export function open(repo: Repo, version: string, env: NodeJS.ProcessEnv = proce
           const kept = [...p.entries].slice(-FACTS);
           writeAtomic(join(dir, `facts-${kind}.json.gz`), JSON.stringify(Object.fromEntries(kept)));
         }
-        // Another process (the other mode) may have stored its report since.
-        const latest = readJson<Result>(resultPath) ?? reused;
+        // Another process (the other mode) may have stored its report since;
+        // it is kept only if made under the same answers to every probe.
         const base: Result = reused ?? { probes: [...probes.values()], analysis, outputs: {} };
-        const outputs = { ...(latest?.outputs ?? {}), ...base.outputs, [mode]: output };
+        const latest = readJson<Result>(resultPath);
+        const same = latest && JSON.stringify(latest.probes) === JSON.stringify(base.probes);
+        const outputs = { ...(same ? latest.outputs : {}), ...base.outputs, [mode]: output };
         writeAtomic(resultPath, JSON.stringify({ ...base, outputs }));
         prune(join(dir, "results"));
       } catch {
