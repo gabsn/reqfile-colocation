@@ -78,6 +78,30 @@ scripts, package.json scripts/`bin`/`exports`, task and runner files
 (mise.toml, Makefile, Dockerfile, wrangler.toml...), manifests and string
 literals. A path into another package depends on that package.
 
+### Cache
+
+A second run reads only what changed (since 0.4.0). The cache lives in
+`$REQFILE_CACHE/colocation`, else `$XDG_CACHE_HOME/reqfile/colocation`, else
+`~/.cache/reqfile/colocation`, like reqfile's own; CI can keep that folder
+between runs. Every entry is keyed on content, so none is ever stale:
+
+- **What a file says on its own** (its imports, path literals, parse error)
+  is keyed by its git blob hash and its name: an edited file is parsed
+  again, the others are not (TypeScript, JavaScript and Python; Rust files
+  are parsed again whenever the result is recomputed).
+- **The whole result**, analysis and report, is keyed on the version, the
+  repository's folder and the blob hash of every file git lists (`git
+  ls-files -s`, the working copy's bytes for modified and untracked files).
+  Module resolution also reads what git does not list (node_modules, ignored
+  build output, a tsconfig extended from a package): each such lookup is
+  recorded with its answer, and the result is reused only if every lookup
+  still answers the same. `verify` then `suggest` on one tree share one
+  analysis.
+
+The cache never changes a report: on every example of the four frozen
+corpora and on arkadia, cold and warm runs print byte for byte what 0.3.0
+prints, version aside. Delete the folder to start cold.
+
 ### Blocking rules
 
 | Rule | Breaks when |

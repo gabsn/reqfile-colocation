@@ -7,6 +7,7 @@
 
 import { execFileSync } from "node:child_process";
 
+import type { Cache } from "./cache";
 import type { Analysis, Boundary, Edge, Unverifiable } from "./graph";
 import type { Command } from "./references";
 import * as paths from "./paths";
@@ -100,13 +101,23 @@ json.dump([parse(p) for p in paths], sys.stdout)
 
 type Module = { path: string; file: string | null; folder: string | null };
 
-export function analyze(repo: Repo): { analysis: Analysis; literals: Command[] } {
+export function analyze(repo: Repo, cache: Cache): { analysis: Analysis; literals: Command[] } {
   const code = [...repo.files].filter((f) => f.endsWith(".py"));
   if (code.length === 0) return { analysis: { edges: [], boundaries: [], unverifiable: [] }, literals: [] };
   let parsed: Parsed[];
   try {
-    const out = execFileSync("python3", ["-c", READER], { input: JSON.stringify(code), encoding: "utf8", maxBuffer: 1 << 30, cwd: repo.root });
-    parsed = JSON.parse(out) as Parsed[];
+    // python3 reads only the files whose facts are not cached. A read error
+    // names the path, so it is not kept.
+    const facts = cache.facts<Omit<Parsed, "path">>(
+      "python",
+      code,
+      (missing) => {
+        const out = execFileSync("python3", ["-c", READER], { input: JSON.stringify(missing), encoding: "utf8", maxBuffer: 1 << 30, cwd: repo.root });
+        return (JSON.parse(out) as Parsed[]).map(({ path: _, ...rest }) => rest);
+      },
+      (f) => !f.error?.startsWith("cannot be read"),
+    );
+    parsed = code.map((path, i) => ({ path, ...facts[i] }));
   } catch (error) {
     const why = error instanceof Error ? error.message.split("\n")[0] : String(error);
     return {
