@@ -1,6 +1,7 @@
-// The cache that makes a second run cheap, in `$REQFILE_CACHE/colocation`
-// (else `$XDG_CACHE_HOME/reqfile/colocation`, else
-// `~/.cache/reqfile/colocation`), like reqfile's own cache.
+// The cache that makes a second run cheap, in `$REQFILE_CACHE/colocation`,
+// else in the git folder (`.git/reqfile/colocation`, shared by every
+// worktree), where reqfile keeps its own answers: it follows the repository,
+// so a CI job keeps it only if it saves that folder.
 //
 // Two levels, both keyed on content, so a stale entry is never read:
 // - facts: what one file says on its own (its imports, its path literals, its
@@ -21,8 +22,8 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { homedir } from "node:os";
-import { isAbsolute, join, relative } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
+import { gunzipSync, gzipSync } from "node:zlib";
 import type TS from "typescript";
 
 import type { Analysis } from "./graph";
@@ -31,7 +32,7 @@ import type { Repo } from "./repo";
 /** Bumped when what is cached changes shape or meaning. */
 const FORMAT = 1;
 /** Results kept, newest first: a few branches and worktrees. */
-const RESULTS = 32;
+const RESULTS = 8;
 /** Facts kept per kind, most recently written first. */
 const FACTS = 200_000;
 
@@ -60,13 +61,11 @@ export type Cache = {
   save(analysis: Analysis, mode: string, output: Output): void;
 };
 
-export function directory(env: NodeJS.ProcessEnv = process.env): string | undefined {
-  const set = (key: string) => (env[key] ? env[key] : undefined);
-  const base = set("REQFILE_CACHE") ?? (set("XDG_CACHE_HOME") ? join(set("XDG_CACHE_HOME")!, "reqfile") : undefined);
-  if (base) return join(base, "colocation");
-  const home = set("HOME") ?? homedir();
-  return home ? join(home, ".cache", "reqfile", "colocation") : undefined;
+export function directory(env: NodeJS.ProcessEnv, gitDir: string): string {
+  return env.REQFILE_CACHE ? join(env.REQFILE_CACHE, "colocation") : join(gitDir, "reqfile", "colocation");
 }
+
+const git = (args: string[]) => execFileSync("git", args, { encoding: "utf8", maxBuffer: 1 << 30 });
 
 const sha = (text: string | Buffer) => createHash("sha256").update(text).digest("hex");
 
@@ -77,10 +76,8 @@ export function blobHash(bytes: Buffer): string {
 
 /** The blob hash of every listed file: the index's for files the working tree
  * has unchanged, the file's own bytes for modified and untracked ones. */
-export function blobs(repo: Repo): Map<string, string> {
-  const git = (args: string[]) => execFileSync("git", args, { encoding: "utf8", maxBuffer: 1 << 30 });
+export function blobs(repo: Repo, prefix: string): Map<string, string> {
   const out = new Map<string, string>();
-  const prefix = git(["rev-parse", "--show-prefix"]).trim();
   for (const entry of git(["ls-files", "-s", "-z"]).split("\0")) {
     const m = entry.match(/^\d+ ([0-9a-f]+) \d\t(.*)$/s);
     if (m && repo.files.has(m[2])) out.set(m[2], m[1]);
@@ -117,8 +114,11 @@ export function typescript(): typeof TS {
 
 const require = createRequire(import.meta.url);
 
-export function open(repo: Repo, version: string, dir = directory()): Cache {
-  const hashes = blobs(repo);
+export function open(repo: Repo, version: string, env: NodeJS.ProcessEnv = process.env): Cache {
+  // The folder's path from the top of the repository, and the shared git folder.
+  const [prefix, common] = git(["rev-parse", "--show-prefix", "--git-common-dir"]).split("\n");
+  const dir = directory(env, resolve(repo.root, common));
+  const hashes = blobs(repo, prefix);
   const tsVersion = (require("typescript/package.json") as { version: string }).version;
   const python = [...repo.files].some((f) => f.endsWith(".py")) ? pythonVersion() : "";
   const files = [...hashes].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
@@ -129,7 +129,7 @@ export function open(repo: Repo, version: string, dir = directory()): Cache {
   const pack = (kind: string) => {
     let p = packs.get(kind);
     if (!p) {
-      p = { entries: new Map(Object.entries(readJson<Record<string, unknown>>(dir && join(dir, `facts-${kind}.json`)) ?? {})), added: false };
+      p = { entries: new Map(Object.entries(readJson<Record<string, unknown>>(dir && join(dir, `facts-${kind}.json.gz`)) ?? {})), added: false };
       packs.set(kind, p);
     }
     return p;
@@ -203,7 +203,7 @@ export function open(repo: Repo, version: string, dir = directory()): Cache {
     onUnRecoverableConfigFileDiagnostic: () => {},
   };
 
-  const resultPath = dir && join(dir, "results", `${key}.json`);
+  const resultPath = join(dir, "results", `${key}.json.gz`);
   let reused: Result | undefined;
   return {
     fact: (kind, path, compute, keep) => facts(kind, [path], () => [compute()], keep)[0],
@@ -228,19 +228,18 @@ export function open(repo: Repo, version: string, dir = directory()): Cache {
       return { analysis: r.analysis, outputs: r.outputs };
     },
     save(analysis, mode, output) {
-      if (!dir) return;
       try {
         mkdirSync(join(dir, "results"), { recursive: true });
         for (const [kind, p] of packs) {
           if (!p.added) continue;
           const kept = [...p.entries].slice(-FACTS);
-          writeAtomic(join(dir, `facts-${kind}.json`), JSON.stringify(Object.fromEntries(kept)));
+          writeAtomic(join(dir, `facts-${kind}.json.gz`), JSON.stringify(Object.fromEntries(kept)));
         }
         // Another process (the other mode) may have stored its report since.
         const latest = readJson<Result>(resultPath) ?? reused;
         const base: Result = reused ?? { probes: [...probes.values()], analysis, outputs: {} };
         const outputs = { ...(latest?.outputs ?? {}), ...base.outputs, [mode]: output };
-        writeAtomic(resultPath!, JSON.stringify({ ...base, outputs }));
+        writeAtomic(resultPath, JSON.stringify({ ...base, outputs }));
         prune(join(dir, "results"));
       } catch {
         // A cache that cannot be written only makes the next run slower.
@@ -331,7 +330,7 @@ function pythonVersion(): string {
 function readJson<T>(path: string | undefined): T | undefined {
   if (!path) return undefined;
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as T;
+    return JSON.parse(gunzipSync(readFileSync(path)).toString("utf8")) as T;
   } catch {
     // Missing or torn: a miss.
     return undefined;
@@ -340,13 +339,13 @@ function readJson<T>(path: string | undefined): T | undefined {
 
 function writeAtomic(path: string, text: string): void {
   const tmp = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
-  writeFileSync(tmp, text);
+  writeFileSync(tmp, gzipSync(text, { level: 1 }));
   renameSync(tmp, path);
 }
 
 function prune(folder: string): void {
   const entries = readdirSync(folder)
-    .filter((f) => f.endsWith(".json"))
+    .filter((f) => f.endsWith(".json.gz"))
     .map((f) => {
       try {
         return { f, t: statSync(join(folder, f)).mtimeMs };

@@ -18,19 +18,19 @@ src/                              # the checker, in TypeScript, published to npm
 Try it, then adopt it (reqfile 0.3 or later, with [Bun](https://bun.sh) installed):
 
 ```sh
-reqfile eval --use gabsn/reqfile-colocation@v0.3.0    # its score on its examples
-reqfile check --use gabsn/reqfile-colocation@v0.3.0   # its findings on your code
-reqfile add gabsn/reqfile-colocation@v0.3.0           # writes the line below
+reqfile eval --use gabsn/reqfile-colocation@v0.4.0    # its score on its examples
+reqfile check --use gabsn/reqfile-colocation@v0.4.0   # its findings on your code
+reqfile add gabsn/reqfile-colocation@v0.4.0           # writes the line below
 ```
 
 which writes:
 
 ```yaml
 code:
-  - { id: COLOCATION, use: gabsn/reqfile-colocation@<commit> }  # v0.3.0
+  - { id: COLOCATION, use: gabsn/reqfile-colocation@<commit> }  # v0.4.0
 ```
 
-The checks run `bunx @g48in/reqfile-colocation@0.3.0 verify` (blocking) and
+The checks run `bunx @g48in/reqfile-colocation@0.4.0 verify` (blocking) and
 `... suggest` (advisory): Bun fetches the checker and its dependencies
 (TypeScript 6, web-tree-sitter, yaml) from npm once and caches them. Python
 repositories need python3. With Node only, use `npx -y` instead of `bunx`.
@@ -81,9 +81,11 @@ literals. A path into another package depends on that package.
 ### Cache
 
 A second run reads only what changed (since 0.4.0). The cache lives in
-`$REQFILE_CACHE/colocation`, else `$XDG_CACHE_HOME/reqfile/colocation`, else
-`~/.cache/reqfile/colocation`, like reqfile's own; CI can keep that folder
-between runs. Every entry is keyed on content, so none is ever stale:
+`$REQFILE_CACHE/colocation`, else in the git folder,
+`.git/reqfile/colocation`, shared by every worktree, beside reqfile's own
+answers. It follows the repository: a CI job starts cold unless it keeps
+that folder between runs. Every entry is keyed on content, so none is ever
+stale:
 
 - **What a file says on its own** (its imports, path literals, parse error)
   is keyed by its git blob hash and its name: an edited file is parsed
@@ -101,6 +103,16 @@ between runs. Every entry is keyed on content, so none is ever stale:
 The cache never changes a report: on every example of the four frozen
 corpora and on arkadia, cold and warm runs print byte for byte what 0.3.0
 prints, version aside. Delete the folder to start cold.
+
+On arkadia (about 2,300 files, 1,000 of them TypeScript; medians of 5
+interleaved runs on a laptop):
+
+| Run | 0.3.0 | 0.4.0 |
+|---|---|---|
+| `verify`, empty cache | 1.70 s | 1.53 s |
+| `verify` then `suggest`, empty cache | 3.63 s | 2.01 s |
+| `verify`, nothing changed | 1.70 s | 0.23 s |
+| `verify`, one file edited | 1.70 s | 0.84 s |
 
 ### Blocking rules
 

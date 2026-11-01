@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { gunzipSync } from "node:zlib";
 
 import { blobHash, directory } from "./cache";
 
@@ -41,6 +42,7 @@ function repo(files: Record<string, string>) {
       return warm;
     },
     results: () => readdirSync(join(cache, "colocation", "results")),
+    stored: (entry: string) => JSON.parse(gunzipSync(readFileSync(join(cache, "colocation", "results", entry))).toString("utf8")),
   };
 }
 
@@ -59,7 +61,7 @@ test("a second run on the same tree reuses the first's result, and verify and su
   r.check("suggest");
   expect(r.results()).toHaveLength(1);
   const [entry] = r.results();
-  const stored = JSON.parse(readFileSync(join(r.cache, "colocation", "results", entry), "utf8"));
+  const stored = r.stored(entry);
   expect(Object.keys(stored.outputs).sort()).toEqual(["suggest", "verify"]);
   expect(r.check("verify")).toEqual(first);
 });
@@ -83,6 +85,19 @@ test("an edit committed, then reverted in the working copy, is seen both times",
   expect(r.check().code).toBe(2);
   r.write("src/main.ts", BASE["src/main.ts"]);
   expect(r.check().code).toBe(0);
+});
+
+test("run from a subfolder, an edit in the working copy is seen", () => {
+  const r = repo({ "app/package.json": "{}", ...Object.fromEntries(Object.entries(BASE).map(([p, t]) => [`app/${p}`, t])) });
+  r.git("add", ".");
+  r.git("commit", "-qm", "base");
+  const run = () => {
+    const out = spawnSync("bun", [MAIN, "verify"], { cwd: join(r.dir, "app"), encoding: "utf8", env: { ...process.env, REQFILE_CACHE: r.cache } });
+    return { code: out.status, stderr: out.stderr };
+  };
+  expect(run().code).toBe(0);
+  r.write("app/src/main.ts", 'import { total } from "./billing/tax";\nconsole.log(total(2));\n');
+  expect(run().code).toBe(1);
 });
 
 test("a tsconfig change is seen: a paths alias added, then removed", () => {
@@ -175,10 +190,18 @@ test("a Python file edited is parsed again", () => {
   expect(broken.stderr).toContain("shop/main.py");
 });
 
-test("the cache folder is REQFILE_CACHE's, else XDG_CACHE_HOME's, else HOME's", () => {
-  expect(directory({ REQFILE_CACHE: "/c", XDG_CACHE_HOME: "/x", HOME: "/h" })).toBe(join("/c", "colocation"));
-  expect(directory({ XDG_CACHE_HOME: "/x", HOME: "/h" })).toBe(join("/x", "reqfile", "colocation"));
-  expect(directory({ HOME: "/h" })).toBe(join("/h", ".cache", "reqfile", "colocation"));
+test("the cache folder is REQFILE_CACHE's, else the git folder's, shared by every worktree", () => {
+  expect(directory({ REQFILE_CACHE: "/c" }, "/r/.git")).toBe(join("/c", "colocation"));
+  expect(directory({}, "/r/.git")).toBe(join("/r/.git", "reqfile", "colocation"));
+  const r = repo(BASE);
+  r.git("add", ".");
+  r.git("commit", "-qm", "base");
+  const env = { ...process.env };
+  delete env.REQFILE_CACHE;
+  const worktree = join(r.dir, "..", `${r.dir.split("/").pop()}-wt`);
+  r.git("worktree", "add", "-q", worktree);
+  for (const cwd of [r.dir, join(worktree, "src")]) expect(spawnSync("bun", [MAIN, "verify"], { cwd, env }).status).toBe(0);
+  expect(readdirSync(join(r.dir, ".git", "reqfile", "colocation", "results"))).toHaveLength(2);
 });
 
 test("a blob hash is git's", () => {
