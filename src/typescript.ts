@@ -3,10 +3,10 @@
 // jsconfig.json (extends, paths, baseUrl, package exports). A folder with an
 // index file that exports is a boundary, and that file its interface.
 
-import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
-import ts from "typescript";
+import type TS from "typescript";
 
+import { type Cache, typescript } from "./cache";
 import type { Analysis, Boundary, Edge, Unverifiable } from "./graph";
 import type { Command } from "./references";
 import * as paths from "./paths";
@@ -17,45 +17,52 @@ const CODE = /\.(ts|tsx|js|jsx|mjs|cjs|mts|cts)$/;
 const INDEX = /^index\.(ts|tsx|js|jsx|mjs|cjs|mts|cts)$/;
 const CONFIGS = ["tsconfig.json", "jsconfig.json"];
 
-const DEFAULTS: ts.CompilerOptions = {
+/** Loaded by the first analysis (`typescript()`): a run the cache answers
+ * does without it. */
+let ts: typeof TS;
+
+const defaults = (): TS.CompilerOptions => ({
   module: ts.ModuleKind.ESNext,
   moduleResolution: ts.ModuleResolutionKind.Bundler,
   allowJs: true,
   resolveJsonModule: true,
   allowArbitraryExtensions: true,
   jsx: ts.JsxEmit.Preserve,
-};
+});
 
 /** A `paths` entry: `@/*` -> ["src/*"], targets as repository paths. */
 type Alias = { prefix: string; exact: boolean; targets: string[] };
-type Config = { options: ts.CompilerOptions; aliases: Alias[] } | { error: string };
+type Config = { options: TS.CompilerOptions; aliases: Alias[]; resolutions: TS.ModuleResolutionCache } | { error: string };
 
 /** A specifier as written, with what it names. */
 type Specifier = { text: string; line: number; items: string[] };
 
-export function analyze(repo: Repo): { analysis: Analysis; literals: Command[] } {
+/** What a file says on its own, whatever the rest of the repository holds. */
+type Facts =
+  | { error: { line?: number; message: string } }
+  | { specifiers: Specifier[]; literals: { line: number; text: string }[] };
+
+export function analyze(repo: Repo, cache: Cache): { analysis: Analysis; literals: Command[] } {
+  ts = typescript();
   const code = [...repo.files].filter((f) => CODE.test(f));
   const edges: Edge[] = [];
   const unverifiable: Unverifiable[] = [];
   const literals: Command[] = [];
   const configs = new Map<string, Config>();
   for (const file of code) {
-    const config = configFor(repo, file, configs);
+    const config = configFor(repo, file, configs, cache);
     if ("error" in config) {
       unverifiable.push({ path: file, reason: config.error });
       continue;
     }
-    const text = repo.read(file);
-    const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, scriptKind(file));
-    const errors = (sf as unknown as { parseDiagnostics?: readonly ts.Diagnostic[] }).parseDiagnostics ?? [];
-    if (errors.length > 0) {
-      const at = errors[0].start === undefined ? undefined : sf.getLineAndCharacterOfPosition(errors[0].start).line + 1;
-      unverifiable.push({ path: file, line: at, reason: `does not parse: ${ts.flattenDiagnosticMessageText(errors[0].messageText, " ")}` });
+    const facts = cache.fact<Facts>("typescript", file, () => read(file, repo.read(file)));
+    if ("error" in facts) {
+      unverifiable.push({ path: file, line: facts.error.line, reason: facts.error.message });
       continue;
     }
-    literals.push(...pathLiterals(sf).map((l) => ({ file, ...l })));
-    for (const spec of specifiers(sf)) {
-      const resolved = resolve(repo, file, spec.text, config);
+    literals.push(...facts.literals.map((l) => ({ file, ...l })));
+    for (const spec of facts.specifiers) {
+      const resolved = resolve(repo, file, spec.text, config, cache);
       if (resolved === "external") continue;
       if ("reason" in resolved) unverifiable.push({ path: file, line: spec.line, reason: resolved.reason });
       else edges.push({ from: file, to: resolved.path, kind: "import", line: spec.line, items: spec.items });
@@ -66,6 +73,17 @@ export function analyze(repo: Repo): { analysis: Analysis; literals: Command[] }
     .map((entry) => ({ folder: paths.dir(entry), entry }));
   markBypasses(repo, edges, boundaries);
   return { analysis: { edges, boundaries, unverifiable }, literals };
+}
+
+/** A file's own facts, from TypeScript's syntax tree. */
+function read(file: string, text: string): Facts {
+  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, scriptKind(file));
+  const errors = (sf as unknown as { parseDiagnostics?: readonly TS.Diagnostic[] }).parseDiagnostics ?? [];
+  if (errors.length > 0) {
+    const at = errors[0].start === undefined ? undefined : sf.getLineAndCharacterOfPosition(errors[0].start).line + 1;
+    return { error: { line: at, message: `does not parse: ${ts.flattenDiagnosticMessageText(errors[0].messageText, " ")}` } };
+  }
+  return { specifiers: specifiers(sf), literals: pathLiterals(sf) };
 }
 
 /** An import entering a boundary must land on an interface: its own, or a
@@ -90,7 +108,7 @@ function markBypasses(repo: Repo, edges: Edge[], boundaries: Boundary[]): void {
   }
 }
 
-function scriptKind(file: string): ts.ScriptKind {
+function scriptKind(file: string): TS.ScriptKind {
   if (/\.tsx$/.test(file)) return ts.ScriptKind.TSX;
   if (/\.jsx$/.test(file)) return ts.ScriptKind.JSX;
   if (/\.(js|mjs|cjs)$/.test(file)) return ts.ScriptKind.JS;
@@ -99,10 +117,10 @@ function scriptKind(file: string): ts.ScriptKind {
 
 /** Every module specifier of a file: imports, re-exports, import =, and
  * import() or require() calls with a literal argument. */
-function specifiers(sf: ts.SourceFile): Specifier[] {
+function specifiers(sf: TS.SourceFile): Specifier[] {
   const found: Specifier[] = [];
-  const line = (node: ts.Node) => sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
-  const visit = (node: ts.Node) => {
+  const line = (node: TS.Node) => sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+  const visit = (node: TS.Node) => {
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
       found.push({ text: node.moduleSpecifier.text, line: line(node), items: importItems(node.importClause) });
     } else if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
@@ -128,9 +146,9 @@ function specifiers(sf: ts.SourceFile): Specifier[] {
 }
 
 /** String literals that may be paths, other than module specifiers. */
-function pathLiterals(sf: ts.SourceFile): { line: number; text: string }[] {
+function pathLiterals(sf: TS.SourceFile): { line: number; text: string }[] {
   const found: { line: number; text: string }[] = [];
-  const visit = (node: ts.Node) => {
+  const visit = (node: TS.Node) => {
     if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) return;
     if (ts.isStringLiteralLike(node) && node.text.includes("/") && !node.text.includes("\n") && node.text.length < 300) {
       const parent = node.parent;
@@ -143,7 +161,7 @@ function pathLiterals(sf: ts.SourceFile): { line: number; text: string }[] {
   return found;
 }
 
-function importItems(clause: ts.ImportClause | undefined): string[] {
+function importItems(clause: TS.ImportClause | undefined): string[] {
   if (!clause) return [];
   const items: string[] = [];
   if (clause.name) items.push("default");
@@ -155,26 +173,41 @@ function importItems(clause: ts.ImportClause | undefined): string[] {
 
 /** The nearest tsconfig.json or jsconfig.json above a file, parsed by
  * TypeScript itself so `extends` and its defaults apply. */
-function configFor(repo: Repo, file: string, cache: Map<string, Config>): Config {
+function configFor(repo: Repo, file: string, cache: Map<string, Config>, files: Cache): Config {
   for (let dir = paths.dir(file); ; dir = paths.dir(dir)) {
     for (const name of CONFIGS) {
       const path = paths.join(dir, name);
       if (!repo.files.has(path)) continue;
       let config = cache.get(path);
       if (!config) {
-        config = parseConfig(repo, path);
+        config = parseConfig(repo, path, files);
         cache.set(path, config);
       }
       return config;
     }
-    if (dir === "") return { options: DEFAULTS, aliases: [] };
+    if (dir === "") {
+      let config = cache.get("");
+      if (!config) {
+        const options = defaults();
+        config = { options, aliases: [], resolutions: resolutionCache(repo, options) };
+        cache.set("", config);
+      }
+      return config;
+    }
   }
 }
 
-function parseConfig(repo: Repo, path: string): Config {
+/** Resolutions shared by every file under one config, as TypeScript's own
+ * program shares them: each folder and package is looked up once. */
+function resolutionCache(repo: Repo, options: TS.CompilerOptions): TS.ModuleResolutionCache {
+  const canonical = ts.sys.useCaseSensitiveFileNames ? (f: string) => f : (f: string) => f.toLowerCase();
+  return ts.createModuleResolutionCache(repo.root, canonical, options);
+}
+
+function parseConfig(repo: Repo, path: string, files: Cache): Config {
   let fatal: string | undefined;
-  const host: ts.ParseConfigFileHost = {
-    ...ts.sys,
+  const host: TS.ParseConfigFileHost = {
+    ...files.host,
     onUnRecoverableConfigFileDiagnostic: (d) => {
       fatal = ts.flattenDiagnosticMessageText(d.messageText, " ");
     },
@@ -186,7 +219,7 @@ function parseConfig(repo: Repo, path: string): Config {
     const message = typeof error === "string" ? error : error ? ts.flattenDiagnosticMessageText(error.messageText, " ") : "unreadable";
     return { error: `${path} does not parse: ${message}` };
   }
-  const options = { ...DEFAULTS, ...parsed.options };
+  const options = { ...defaults(), ...parsed.options };
   const entries = Object.entries(options.paths ?? {});
   const base = options.pathsBasePath ?? options.baseUrl ?? join(repo.root, paths.dir(path));
   const alias = ([pattern, targets]: [string, string[]]): Alias => ({
@@ -194,7 +227,7 @@ function parseConfig(repo: Repo, path: string): Config {
     exact: !pattern.includes("*"),
     targets: targets.map((t) => relative(repo.root, join(String(base), t)).split("\\").join("/")),
   });
-  return { options, aliases: entries.map(alias) };
+  return { options, aliases: entries.map(alias), resolutions: resolutionCache(repo, options) };
 }
 
 let packages: Map<string, string> | undefined;
@@ -254,14 +287,15 @@ function resolve(
   repo: Repo,
   file: string,
   text: string,
-  config: { options: ts.CompilerOptions; aliases: Alias[] },
+  config: { options: TS.CompilerOptions; aliases: Alias[]; resolutions: TS.ModuleResolutionCache },
+  cache: Cache,
 ): { path: string } | "external" | { reason: string } {
   text = text.replace(/[?#].*$/, "");
   const local = text.startsWith(".") || text.startsWith("/");
   const matched = local
     ? []
     : config.aliases.filter((a) => (a.exact ? text === a.prefix : a.prefix !== "" && text.startsWith(a.prefix)));
-  const result = ts.resolveModuleName(text, join(repo.root, file), config.options, ts.sys).resolvedModule;
+  const result = ts.resolveModuleName(text, join(repo.root, file), config.options, cache.host, config.resolutions).resolvedModule;
   if (result) {
     const path = relative(repo.root, result.resolvedFileName).split("\\").join("/");
     if (result.isExternalLibraryImport || path.startsWith("../") || path.split("/").includes("node_modules")) return "external";
@@ -282,7 +316,7 @@ function resolve(
     const path = paths.normalize(paths.join(paths.dir(file), text));
     if (path !== null && path.split("/").includes("node_modules")) return "external";
     if (path !== null && repo.files.has(path)) return { path };
-    if (path !== null && existsSync(join(repo.root, path))) return { reason: `\`${text}\` resolves to ${path}, which git does not track` };
+    if (path !== null && cache.exists(join(repo.root, path))) return { reason: `\`${text}\` resolves to ${path}, which git does not track` };
     return { reason: `\`${text}\` does not resolve to a file` };
   }
   // An alias onto installed packages resolves once they are installed.

@@ -10,6 +10,7 @@
 //                                 Exit 0, or 1 when a finding is likely.
 
 import pkg from "../package.json";
+import * as cache from "./cache";
 import { type Analysis, merge } from "./graph";
 import * as python from "./python";
 import * as references from "./references";
@@ -20,9 +21,9 @@ import { judge } from "./suggest";
 import * as typescript from "./typescript";
 import { verify } from "./verify";
 
-export async function analyze(repo: Repo): Promise<Analysis> {
-  const ts = typescript.analyze(repo);
-  const py = python.analyze(repo);
+export async function analyze(repo: Repo, files: cache.Cache): Promise<Analysis> {
+  const ts = typescript.analyze(repo, files);
+  const py = python.analyze(repo, files);
   const rs = await rust.analyze(repo);
   const paths = references.edges(repo, references.commands(repo, [...ts.literals, ...py.literals]));
   return merge([ts.analysis, py.analysis, rs, { edges: paths, boundaries: [], unverifiable: [] }]);
@@ -40,23 +41,45 @@ async function main(): Promise<number> {
     return 2;
   }
   const repo = load();
-  const analysis = await analyze(repo);
+  const files = cache.open(repo, pkg.version);
+  const earlier = files.result();
+  const output = earlier?.outputs[mode];
+  if (output) return print(output);
+  const analysis = earlier?.analysis ?? (await analyze(repo, files));
+  // Stored as analyzed, before the rules read it.
+  const stored: Analysis = earlier ? analysis : JSON.parse(JSON.stringify(analysis));
+  const fresh = report(repo, analysis, mode);
+  files.save(stored, mode, fresh);
+  return print(fresh);
+}
+
+function print(output: cache.Output): number {
+  process.stdout.write(output.stdout);
+  process.stderr.write(output.stderr);
+  return output.code;
+}
+
+function report(repo: Repo, analysis: Analysis, mode: string): cache.Output {
   if (mode === "suggest") {
     const judgments = judge(repo, analysis);
-    process.stdout.write(`${JSON.stringify(suggestReport(judgments, pkg.version))}\n`);
-    return judgments.some((j) => j.probability > 0.7) ? 1 : 0;
+    return {
+      stdout: `${JSON.stringify(suggestReport(judgments, pkg.version))}\n`,
+      stderr: "",
+      code: judgments.some((j) => j.probability > 0.7) ? 1 : 0,
+    };
   }
   const verdict = verify(repo, analysis);
-  process.stdout.write(`${JSON.stringify(verifyReport(verdict, pkg.version))}\n`);
   const lines = [
     `reqfile-colocation: ${verdict.compliant.length} compliant, ${verdict.violations.length} violations, ${verdict.unverifiable.length} unverifiable, ${verdict.excepted.length} excepted`,
     ...verdict.unverifiable.map((u) => `unverifiable  ${u.path}${u.line ? `:${u.line}` : ""}  ${u.reason}`),
     ...verdict.violations.map((v) => `violation     ${v.path}${v.line ? `:${v.line}` : ""}  [${v.rule}] ${v.message}`),
     ...verdict.excepted.map((v) => `excepted      ${v.path}  [${v.rule}] ${v.reason}`),
   ];
-  process.stderr.write(`${lines.join("\n")}\n`);
-  if (verdict.unverifiable.length > 0) return 2;
-  return verdict.violations.length > 0 ? 1 : 0;
+  return {
+    stdout: `${JSON.stringify(verifyReport(verdict, pkg.version))}\n`,
+    stderr: `${lines.join("\n")}\n`,
+    code: verdict.unverifiable.length > 0 ? 2 : verdict.violations.length > 0 ? 1 : 0,
+  };
 }
 
 main().then(

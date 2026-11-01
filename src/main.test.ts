@@ -18,7 +18,9 @@ function run(files: Record<string, string>, mode = "verify") {
     writeFileSync(join(dir, path), text);
   }
   spawnSync("git", ["init", "-q"], { cwd: dir });
-  const out = spawnSync("bun", [MAIN, mode], { cwd: dir, encoding: "utf8" });
+  // A cache of its own, so each run is a cold one (src/cache.test.ts covers warm runs).
+  const env = { ...process.env, REQFILE_CACHE: mkdtempSync(join(tmpdir(), "colocation-cache-")) };
+  const out = spawnSync("bun", [MAIN, mode], { cwd: dir, encoding: "utf8", env });
   return { code: out.status, stderr: out.stderr, sarif: out.stdout };
 }
 
